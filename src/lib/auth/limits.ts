@@ -30,6 +30,8 @@ export const RATE_LIMITS = {
   click: { max: 120, windowSeconds: 60 * 60 },
   /** Quest log changes per user: plenty for real use, stops scripted flooding. */
   questLog: { max: 300, windowSeconds: 10 * 60 },
+  /** AI helper requests per user (on top of the 5-a-day cap): stops rapid-fire clicks. */
+  ai: { max: 10, windowSeconds: 10 * 60 },
   /** Nominatim's policy: at most 1 request per second from the whole app. */
   nominatim: { max: 1, windowSeconds: 1 },
 } as const;

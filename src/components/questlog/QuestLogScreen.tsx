@@ -26,6 +26,7 @@ import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { viewerFromAccount } from "@/lib/account/account";
 import { findCityById } from "@/lib/catalog/cities";
+import type { ServerReward } from "@/lib/game/exp";
 import { picksQuery, withQuery } from "@/lib/listings/picks";
 import { sampleQuestLog } from "@/lib/sample/questlog";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
@@ -80,7 +81,7 @@ function persist(fail: boolean): Promise<SaveResult> {
   );
 }
 
-type SaveResult = { ok: true; entry?: LogEntry } | { ok: false; error: string };
+type SaveResult = { ok: true; entry?: LogEntry; reward?: ServerReward | null } | { ok: false; error: string };
 
 function QuestLog({
   today,
@@ -102,7 +103,7 @@ function QuestLog({
 
   const findListing = useFindListing();
   const [viewer, setViewer] = useState(initialViewer);
-  const { reward, levelUpDialog } = useReward(viewer, setViewer);
+  const { reward, fromServer, levelUpDialog } = useReward(viewer, setViewer);
   const [log, setLog] = useState(initialLog);
   const [confirmedToday, setConfirmedToday] = useState(0);
   const [firstTab] = useState(() => defaultTab(initialLog));
@@ -151,7 +152,7 @@ function QuestLog({
   const commit = (
     next: LogEntry[],
     before: LogEntry[],
-    onSaved?: (saved?: LogEntry) => void,
+    onSaved?: (saved?: LogEntry, granted?: ServerReward | null) => void,
     op?: () => Promise<SaveResult>,
   ) => {
     setLog(next);
@@ -160,7 +161,7 @@ function QuestLog({
       .catch((): SaveResult => ({ ok: false, error: "We couldn't save that change, so it was undone. Check your connection." }))
       .then((r) => {
         if (r.ok) {
-          onSaved?.(r.entry);
+          onSaved?.(r.entry, r.reward);
           return;
         }
         setLog(before);
@@ -196,9 +197,10 @@ function QuestLog({
     commit(
       log.map((x) => (x.id === id ? moved : x)),
       before,
-      () => {
+      (_saved, granted) => {
         const message = moveMessage(to, outcome ?? null);
-        if (exp) reward(exp.amount, message);
+        if (LIVE) fromServer(granted, message);
+        else if (exp) reward(exp.amount, message);
         else toast({ message, tone: "success" });
       },
       () => moveApplication(id, to, outcome ?? null),
@@ -216,10 +218,11 @@ function QuestLog({
     commit(
       log.map((x) => (x.id === id ? done : x)),
       log,
-      (saved) => {
+      (saved, granted) => {
         replaceEntry(id, saved);
         setConfirmedToday((n) => n + 1);
-        if (exp) reward(exp.amount, "Marked as applied.");
+        if (LIVE) fromServer(granted, "Marked as applied.", (v0) => ({ ...v0, applicationsTotal: v0.applicationsTotal + 1 }));
+        else if (exp) reward(exp.amount, "Marked as applied.");
         else toast({ message: "Marked as applied.", tone: "success" });
       },
       listingId ? () => confirmApplication(listingId) : undefined,

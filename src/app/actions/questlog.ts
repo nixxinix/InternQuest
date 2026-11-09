@@ -5,14 +5,18 @@
  * signed-in user, so row-level security keeps each log private, except
  * "Yes, I applied": the server records it (confirmed_at) only after finding
  * this user's Apply click on that listing in the last 14 days.
- * EXP for these steps arrives with Phase 3 (exp_events).
+ * EXP is granted here, on the server (src/lib/game/server.ts), and returned
+ * as `reward` for the screen to show.
  */
 import { TOO_MANY_TRIES } from "@/lib/auth/limits";
+import { EXP, confirmEarnsExp, confirmExp, manilaDayOf, moveExp, type ServerReward } from "@/lib/game/exp";
+import { safeRewards } from "@/lib/game/server";
 import { currentUserId, takeRateLimit } from "@/lib/auth/server";
 import { getListing } from "@/lib/listings/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createServerSupabase, createServiceSupabase } from "@/lib/supabase/server";
 import { manilaDate, validateExternal, type ExternalDraft, type LogEntry } from "@/lib/tracker/log";
+import type { Outcome, Status } from "@/lib/tracker/status";
 import {
   APPLICATION_COLUMNS,
   CONFIRM_WINDOW_DAYS,
@@ -54,7 +58,7 @@ async function readEntry(m: Me, entryId: string): Promise<ApplicationRow | null>
 /* ------------------------------------------------------------------------ */
 
 /** Save a listing to the quest log (Saved column). Saving twice is fine. */
-export async function saveListing(listingId: string): Promise<ActionResult<{ entry: LogEntry }>> {
+export async function saveListing(listingId: string): Promise<ActionResult<{ entry: LogEntry; reward: ServerReward | null }>> {
   const m = await me();
   if (typeof m === "string") return fail(m);
   const listing = await getListing(String(listingId ?? ""));
@@ -66,7 +70,7 @@ export async function saveListing(listingId: string): Promise<ActionResult<{ ent
     .eq("user_id", m.id)
     .eq("internship_id", listing.id)
     .maybeSingle<ApplicationRow>();
-  if (existing.data) return { ok: true, entry: entryFromRow(existing.data, new Date()) };
+  if (existing.data) return { ok: true, entry: entryFromRow(existing.data, new Date()), reward: null };
 
   const { data, error } = await m.supabase
     .from("applications")
@@ -77,7 +81,9 @@ export async function saveListing(listingId: string): Promise<ActionResult<{ ent
     console.error("[saveListing]", error?.message);
     return fail(error?.message.includes("at most 500") ? "Your quest log is full (500 entries). Remove some old ones first." : SOMETHING_WRONG);
   }
-  return { ok: true, entry: entryFromRow(data, new Date()) };
+  // Tutorial: the first save ever (+10, once). Saves also count toward the "Scout" badge.
+  const reward = await safeRewards(m.id, [{ kind: "first_save", ref: "once", amount: EXP.firstSave }]);
+  return { ok: true, entry: entryFromRow(data, new Date()), reward };
 }
 
 /** Un-save: removes the entry only while it's still in Saved (applied ones stay). */
@@ -97,7 +103,7 @@ export async function unsaveListing(listingId: string): Promise<ActionResult> {
  * "Yes, I applied." Counts only if this user clicked Apply (or opened the
  * email) on this listing within the last 14 days, as logged by /go/:id.
  */
-export async function confirmApplication(listingId: string): Promise<ActionResult<{ entry: LogEntry }>> {
+export async function confirmApplication(listingId: string): Promise<ActionResult<{ entry: LogEntry; reward: ServerReward | null }>> {
   const m = await me();
   if (typeof m === "string") return fail(m);
   const listing = await getListing(String(listingId ?? ""));
@@ -107,10 +113,11 @@ export async function confirmApplication(listingId: string): Promise<ActionResul
   const since = new Date(Date.now() - CONFIRM_WINDOW_DAYS * 86_400_000).toISOString();
   const { data: clicks, error: clickError } = await admin
     .from("click_logs")
-    .select("id")
+    .select("id, created_at")
     .eq("user_id", m.id)
     .eq("internship_id", listing.id)
     .gte("created_at", since)
+    .order("created_at", { ascending: false })
     .limit(1);
   if (clickError) return fail(SOMETHING_WRONG);
   if (!clicks?.length) {
@@ -155,15 +162,34 @@ export async function confirmApplication(listingId: string): Promise<ActionResul
     console.error("[confirmApplication]", result.error?.message);
     return fail(SOMETHING_WRONG);
   }
-  // TODO(Phase 3): grant "Confirm an application" EXP here (+20 for the first 3 a day, then +5).
-  return { ok: true, entry: entryFromRow(result.data, now) };
+
+  // EXP only for a click 60 seconds to 7 days before this "Yes" (both server times),
+  // +20 for the first 3 confirmations today, then +5. Once per listing, ever.
+  let reward: ServerReward | null = null;
+  if (!row?.confirmed_at && confirmEarnsExp(new Date((clicks[0] as { created_at: string }).created_at), now).ok) {
+    const { data: earlier } = await admin
+      .from("exp_events")
+      .select("created_at")
+      .eq("user_id", m.id)
+      .eq("kind", "confirm")
+      .gte("created_at", new Date(now.getTime() - 36 * 3_600_000).toISOString());
+    const todayCount = (earlier ?? []).filter((e: { created_at: string }) => manilaDayOf(e.created_at) === today).length;
+    reward = await safeRewards(m.id, [{ kind: "confirm", ref: listing.id, amount: confirmExp(todayCount) }]);
+  } else {
+    reward = await safeRewards(m.id, []);
+  }
+  return { ok: true, entry: entryFromRow(result.data, now), reward };
 }
 
 /* ------------------------------------------------------------------------ */
 /* Entries: move, details, "not yet", remove, add by hand                    */
 /* ------------------------------------------------------------------------ */
 
-export async function moveApplication(entryId: string, to: string, outcome: string | null): Promise<ActionResult> {
+export async function moveApplication(
+  entryId: string,
+  to: string,
+  outcome: string | null,
+): Promise<ActionResult<{ reward: ServerReward | null }>> {
   const m = await me();
   if (typeof m === "string") return fail(m);
   const row = await readEntry(m, String(entryId ?? ""));
@@ -171,8 +197,19 @@ export async function moveApplication(entryId: string, to: string, outcome: stri
   const update = moveUpdate(row, to, outcome, manilaDate(new Date()));
   if (typeof update === "string") return fail(update);
   const { error } = await m.supabase.from("applications").update(update).eq("id", row.id);
-  // TODO(Phase 3): +5 for a forward move, +10 for logging an offer or rejection (once per step).
-  return error ? fail(SOMETHING_WRONG) : { ok: true };
+  if (error) return fail(SOMETHING_WRONG);
+  // +5 for a forward step, +10 for logging an offer or rejection: confirmed applications only, each step once.
+  const grant = moveExp({
+    entryId: row.id,
+    confirmed: row.confirmed_at !== null,
+    fromListing: row.internship_id !== null,
+    from: (isStatus(row.status) ? row.status : "saved") as Status,
+    to: update.status,
+    outcome: update.outcome as Outcome | null,
+  });
+  // A Result also counts toward the "Follow-through" badge, with or without EXP.
+  const reward = grant || update.status === "result" ? await safeRewards(m.id, grant ? [grant] : []) : null;
+  return { ok: true, reward };
 }
 
 export async function updateApplicationDetails(

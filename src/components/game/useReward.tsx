@@ -5,16 +5,20 @@ import { LevelUpDialog } from "@/components/game/LevelUpDialog";
 import { LIVE } from "@/components/providers/AccountProvider";
 import { useFeatures } from "@/components/providers/GameModeProvider";
 import { useToast } from "@/components/ui/Toast";
+import { BADGES } from "@/lib/game/badges";
+import type { ServerReward } from "@/lib/game/exp";
 import { applyExp, unlockAt } from "@/lib/game/reward";
 
 type Progress = { level: number; exp: number; expMax: number };
 
 /**
- * Shows a reward the server granted, the same way on every screen:
+ * Shows rewards the same way on every screen:
  * - Full Quest: a level-up card when the level changes (and no toast on top, decision #6),
  * - otherwise a toast. The toast shows "+N EXP" only in modes with EXP.
  *
- * Phase 3: `amount` comes back from the server action. The client never decides EXP.
+ * Real accounts: `fromServer` shows exactly what the server granted (amount,
+ * level, badges). The browser never decides EXP (CLAUDE.md hard rule).
+ * Design preview: `reward` animates a sample amount.
  * Render `levelUpDialog` once in the screen.
  */
 export function useReward<V extends Progress>(viewer: V, setViewer: Dispatch<SetStateAction<V>>) {
@@ -22,12 +26,42 @@ export function useReward<V extends Progress>(viewer: V, setViewer: Dispatch<Set
   const toast = useToast();
   const [levelUp, setLevelUp] = useState<number | null>(null);
 
+  /** Real accounts: show the server's reward (or just the message when nothing was granted). */
+  const fromServer = (r: ServerReward | null | undefined, message: string, patch?: (v: V) => V) => {
+    setViewer((v0) => {
+      let updated = v0;
+      if (r) {
+        const p = r.progress;
+        updated = {
+          ...v0,
+          level: p.level,
+          exp: p.exp,
+          expMax: p.expMax,
+          // The rest of the viewer, when the screen's viewer has these fields.
+          ...("totalExp" in v0
+            ? { totalExp: p.totalExp, streakWeeks: p.streakWeeks, restWeekAvailable: p.restWeekAvailable, badges: r.badges, weeklyQuest: p.weeklyQuest }
+            : {}),
+        };
+      }
+      return patch ? patch(updated) : updated;
+    });
+    const badgeNames = (r?.newBadges ?? []).map((id) => BADGES.find((b) => b.id === id)?.name ?? id);
+    const withBadges = badgeNames.length && f.badges ? `${message} New badge: ${badgeNames.join(", ")}.` : message;
+    if (r?.leveledUp && f.levelUpScreen) {
+      setLevelUp(r.progress.level);
+      return;
+    }
+    toast({
+      message: r?.leveledUp && f.exp ? `${withBadges} You reached Level ${r.progress.level}.` : withBadges,
+      tone: "success",
+      exp: r && r.amount > 0 ? r.amount : undefined,
+    });
+  };
+
+  /** Design preview: animates a sample amount. Real accounts: only the message (use fromServer). */
   const reward = (amount: number, message: string, patch?: (v: V) => V) => {
     if (LIVE) {
-      // Real accounts: EXP is decided on the server only (Phase 3, exp_events). Until then, no
-      // client-side EXP that would vanish on reload; the action's message still shows.
-      if (patch) setViewer((v0) => patch(v0));
-      toast({ message, tone: "success" });
+      fromServer(null, message, patch);
       return;
     }
     const next = applyExp(viewer, amount);
@@ -55,5 +89,5 @@ export function useReward<V extends Progress>(viewer: V, setViewer: Dispatch<Set
     />
   );
 
-  return { reward, levelUpDialog };
+  return { reward, fromServer, levelUpDialog };
 }

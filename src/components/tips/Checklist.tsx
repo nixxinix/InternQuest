@@ -1,5 +1,7 @@
 "use client";
 
+import { completeChecklist, saveChecklistProgress } from "@/app/actions/game";
+import { LIVE } from "@/components/providers/AccountProvider";
 import { useFeatures } from "@/components/providers/GameModeProvider";
 import { Checkbox } from "@/components/ui/Field";
 import { PixelIcon } from "@/components/ui/PixelIcon";
@@ -7,12 +9,12 @@ import { doneCount, toggleItem } from "@/lib/content/checklist";
 import { useTips } from "./TipsShell";
 import { useChecklist } from "./useChecklist";
 
-const REWARD = 10; // SPEC §10 "Finish a tips checklist +10" (the server grants it in Phase 3)
+const REWARD = 10; // SPEC §10 "Finish a tips checklist +10". With accounts, the server decides and grants it.
 
 /** The guide's checklist. Ticks are saved as you go; finishing it the first time gives +10 EXP. */
 export function Checklist({ slug, items }: { slug: string; items: { id: string; text: string }[] }) {
   const f = useFeatures();
-  const { reward } = useTips();
+  const { reward, fromServer, syncs } = useTips();
   const [state, setState] = useChecklist(slug);
   const ids = items.map((i) => i.id);
   const done = doneCount(state, ids);
@@ -33,7 +35,17 @@ export function Checklist({ slug, items }: { slug: string; items: { id: string; 
               onChange={() => {
                 const next = toggleItem(state, item.id, ids);
                 setState(next.state);
-                if (next.completedNow) reward(REWARD, "Checklist done. Nice prep.");
+                // Signed in: the ticks follow you to other devices. If saving fails, they stay on this one.
+                if (syncs) saveChecklistProgress(slug, next.state.done).catch(() => {});
+                if (!next.completedNow) return;
+                if (!LIVE) {
+                  reward(REWARD, "Checklist done. Nice prep.");
+                  return;
+                }
+                // Once per guide, checked on the server. A failed call just means no EXP this time.
+                completeChecklist(slug)
+                  .then((r) => fromServer(r.ok ? r.reward : null, "Checklist done. Nice prep."))
+                  .catch(() => fromServer(null, "Checklist done. Nice prep."));
               }}
             />
           </li>
@@ -45,7 +57,7 @@ export function Checklist({ slug, items }: { slug: string; items: { id: string; 
           All done. You&apos;re ready for this step.
         </p>
       )}
-      <p className="mt-2 text-xs text-muted">Saved on this device for now.</p>
+      <p className="mt-2 text-xs text-muted">{syncs ? "Saved to your account." : "Saved on this device."}</p>
     </div>
   );
 }

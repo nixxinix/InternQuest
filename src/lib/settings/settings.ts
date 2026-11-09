@@ -54,6 +54,8 @@ export type ExportInput = {
   progress: Record<string, unknown>;
   settings: UserSettings;
   questLog: Record<string, unknown>[];
+  /** Other records kept about the user (checklists, AI helper uses, ...). */
+  more?: Record<string, unknown>;
 };
 
 /**
@@ -75,6 +77,7 @@ export function buildDataExport(input: ExportInput, exportedAt: Date) {
     profile: input.profile,
     progress: input.progress,
     settings: input.settings,
+    ...(input.more ?? {}),
     questLog: input.questLog,
   };
 }

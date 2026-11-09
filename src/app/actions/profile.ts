@@ -17,10 +17,13 @@ import {
 } from "@/lib/account/account";
 import { TOO_MANY_TRIES } from "@/lib/auth/limits";
 import { currentUserId, takeRateLimit } from "@/lib/auth/server";
+import { EXP, type ExpEvent, type ServerReward } from "@/lib/game/exp";
+import { APPLICATION_COLUMNS, type ApplicationRow } from "@/lib/tracker/rows";
+import { safeRewards } from "@/lib/game/server";
 import { geocodePlace } from "@/lib/geo/geocode";
 import { buildDataExport, type UserSettings } from "@/lib/settings/settings";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createServerSupabase, createServiceSupabase } from "@/lib/supabase/server";
 import type { ActionResult } from "./auth";
 
 const NOT_CONNECTED = "Accounts aren't connected in this preview yet.";
@@ -43,7 +46,7 @@ const PLACE_ERRORS = {
 export async function saveProfile(
   values: ProfileInput,
   finishOnboarding = false,
-): Promise<ActionResult<{ cityId: string | null }>> {
+): Promise<ActionResult<{ cityId: string | null; reward: ServerReward | null }>> {
   if (!isSupabaseConfigured()) return fail(NOT_CONNECTED);
   const id = await currentUserId();
   if (!id) return fail(NOT_SIGNED_IN);
@@ -73,11 +76,13 @@ export async function saveProfile(
     console.error("[saveProfile] skills update failed:", skillsError.message);
     return fail(SOMETHING_WRONG);
   }
+  let reward: ServerReward | null = null;
   if (finishOnboarding) {
-    // TODO(Phase 3): award "Complete profile" (+50 EXP, once) through exp_events here.
     await supabase.from("profiles").update({ onboarded_at: new Date().toISOString() }).eq("id", id).is("onboarded_at", null);
+    // "Complete profile": +50, once ever.
+    reward = await safeRewards(id, [{ kind: "profile", ref: "once", amount: EXP.profile }]);
   }
-  return { ok: true, cityId: place ? cityIdFromRow(place.name, place.lat, place.lng) : null };
+  return { ok: true, cityId: place ? cityIdFromRow(place.name, place.lat, place.lng) : null, reward };
 }
 
 /** Each Settings change saves on its own (W11), and onboarding saves the play style. */
@@ -107,7 +112,8 @@ export async function exportMyData(): Promise<ActionResult<{ data: ReturnType<ty
   if (!id) return fail(NOT_SIGNED_IN);
 
   const supabase = await createServerSupabase();
-  const [profile, skills, settings, recovery] = await Promise.all([
+  const admin = createServiceSupabase();
+  const [profile, skills, settings, recovery, applications, events, badges, tips, aiUses, opens] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, username, field_id, city_name, lat, lng, radius_km, work_type, status, school_id, avatar_skin, avatar_hair, consented_at, age_confirmed_at, onboarded_at, created_at, updated_at")
@@ -120,11 +126,28 @@ export async function exportMyData(): Promise<ActionResult<{ data: ReturnType<ty
       .eq("user_id", id)
       .maybeSingle<SettingsRow>(),
     supabase.rpc("my_recovery").maybeSingle<RecoveryRow>(),
+    supabase.from("applications").select(APPLICATION_COLUMNS).eq("user_id", id).order("created_at").limit(500).overrideTypes<ApplicationRow[], { merge: false }>(),
+    supabase.from("exp_events").select("kind, ref, amount, created_at").eq("user_id", id).order("created_at").overrideTypes<ExpEvent[], { merge: false }>(),
+    supabase.from("user_badges").select("badge_id, earned_at").eq("user_id", id).overrideTypes<{ badge_id: string; earned_at: string }[], { merge: false }>(),
+    supabase.from("tips_progress").select("slug, done, updated_at").eq("user_id", id),
+    // Server-only tables: read with the service key, filtered to this user.
+    admin.from("ai_usage").select("kind, internship_id, created_at").eq("user_id", id).order("created_at"),
+    admin.from("resource_opens").select("resource_id, opened_at").eq("user_id", id),
   ]);
-  if (profile.error || skills.error || settings.error || recovery.error || !profile.data) return fail(SOMETHING_WRONG);
+  const failed = profile.error ?? skills.error ?? settings.error ?? recovery.error ?? applications.error ?? events.error ?? badges.error;
+  if (failed || !profile.data) return fail(SOMETHING_WRONG);
 
   const p = profile.data;
-  const account = accountFromRows(p, (skills.data ?? []).map((s: { skill_id: string }) => s.skill_id), settings.data, recovery.data);
+  const apps = applications.data ?? [];
+  const account = accountFromRows(
+    p,
+    (skills.data ?? []).map((s: { skill_id: string }) => s.skill_id),
+    settings.data,
+    recovery.data,
+    apps,
+    new Date(),
+    { events: events.data ?? [], badges: (badges.data ?? []).map((b) => b.badge_id) },
+  );
   const data = buildDataExport(
     {
       account: {
@@ -148,10 +171,35 @@ export async function exportMyData(): Promise<ActionResult<{ data: ReturnType<ty
         ageConfirmed: p.age_confirmed_at,
         lastUpdated: p.updated_at,
       },
-      // EXP, streaks, and badges arrive in Phase 3; the quest log in Phase 2.
-      progress: { level: 1, totalExp: 0, streakWeeks: 0, applications: 0, badges: [] },
+      progress: {
+        level: account.progress.level,
+        totalExp: account.progress.totalExp,
+        streakWeeks: account.progress.streakWeeks,
+        applicationsConfirmed: account.quest.confirmedCount,
+        badges: badges.data ?? [],
+        expHistory: (events.data ?? []).map((e) => ({ for: e.kind, amount: e.amount, at: e.created_at })),
+      },
       settings: account.settings,
-      questLog: [],
+      // Before migration 0006 these tables don't exist yet; the export still works without them.
+      more: {
+        tipsChecklists: tips.error ? [] : (tips.data ?? []),
+        aiHelperUses: aiUses.error ? [] : (aiUses.data ?? []),
+        learningResourcesOpened: opens.error ? [] : (opens.data ?? []),
+      },
+      questLog: apps.map((r) => ({
+        title: r.title,
+        company: r.company,
+        listing: r.internship_id,
+        link: r.url,
+        status: r.status,
+        result: r.outcome,
+        appliedOn: r.applied_on,
+        interviewAt: r.interview_at,
+        interviewHow: r.interview_how,
+        note: r.note,
+        confirmedByYou: r.confirmed_at,
+        lastApplyClick: r.last_clicked_at,
+      })),
     },
     new Date(),
   );

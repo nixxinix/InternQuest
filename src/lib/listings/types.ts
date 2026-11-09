@@ -44,6 +44,8 @@ export type ListingSummary = {
 };
 
 export type LearningResource = {
+  /** Stable id ("python-1"), used by /learn/:id. */
+  id: string;
   title: string;
   url: string;
   type: "video" | "course" | "article" | "docs";

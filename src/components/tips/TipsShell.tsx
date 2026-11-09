@@ -9,10 +9,18 @@ import { initialMotionFor, useAppAccount } from "@/components/providers/AccountP
 import { GameModeProvider, useGameMode } from "@/components/providers/GameModeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
 import { viewerFromAccount } from "@/lib/account/account";
+import type { ServerReward } from "@/lib/game/exp";
 import { isGameMode } from "@/lib/game/mode";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
+import { seedChecklist } from "./useChecklist";
 
-type TipsContextValue = { viewer: Viewer; reward: (amount: number, message: string) => void };
+type TipsContextValue = {
+  viewer: Viewer;
+  /** Signed in: checklist ticks are also saved to the account. */
+  syncs: boolean;
+  reward: (amount: number, message: string) => void;
+  fromServer: (r: ServerReward | null | undefined, message: string) => void;
+};
 const TipsContext = createContext<TipsContextValue | null>(null);
 
 export function useTips(): TipsContextValue {
@@ -50,7 +58,12 @@ function WithAccount({ children, bottomNav }: { children: ReactNode; bottomNav: 
   return (
     <GameModeProvider initialMode={account?.settings.mode} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
-        <Inner initial={account ? viewerFromAccount(account) : SAMPLE_VIEWER} preview={!account} bottomNav={bottomNav}>
+        <Inner
+          initial={account ? viewerFromAccount(account) : SAMPLE_VIEWER}
+          preview={!account}
+          tipsProgress={account?.tipsProgress ?? null}
+          bottomNav={bottomNav}
+        >
           {children}
         </Inner>
       </ToastProvider>
@@ -61,18 +74,24 @@ function WithAccount({ children, bottomNav }: { children: ReactNode; bottomNav: 
 function Inner({
   initial,
   preview,
+  tipsProgress,
   children,
   bottomNav,
 }: {
   initial: Viewer;
   preview: boolean;
+  tipsProgress: Record<string, string[]> | null;
   children: ReactNode;
   bottomNav: boolean;
 }) {
   const [viewer, setViewer] = useState<Viewer>(initial);
-  const { reward, levelUpDialog } = useReward(viewer, setViewer);
+  const { reward, fromServer, levelUpDialog } = useReward(viewer, setViewer);
+  // A new device: bring in the ticks saved to the account.
+  useEffect(() => {
+    for (const [slug, done] of Object.entries(tipsProgress ?? {})) seedChecklist(slug, done);
+  }, [tipsProgress]);
   return (
-    <TipsContext.Provider value={{ viewer, reward }}>
+    <TipsContext.Provider value={{ viewer, syncs: tipsProgress !== null, reward, fromServer }}>
       <AppShell active="tips" viewer={viewer} bottomNav={bottomNav}>
         {children}
       </AppShell>

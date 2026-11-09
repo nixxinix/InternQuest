@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId } from "react";
+import { useId, useState } from "react";
 import { useVocab } from "@/components/providers/GameModeProvider";
 import { matchLabel } from "@/lib/game/progress";
 import type { MatchBreakdown } from "@/lib/listings/types";
@@ -16,15 +16,28 @@ type MatchPanelProps = {
   /** Resume tips for this listing's field (SPEC §6 "Quick prep"). */
   quickPrepHref: string;
   quickPrepField: string;
+  /**
+   * Signed in: "I finished this" under each resource. Resolves to an error
+   * message, or null when the server accepted it.
+   */
+  onFinishResource?: (resourceId: string) => Promise<string | null>;
 };
 
 /**
  * Full skills fit on the listing detail page: score, why it matched,
  * matched skills, missing skills with 1 to 2 free resources each, and Quick prep.
  */
-export function MatchPanel({ match, quickPrepHref, quickPrepField }: MatchPanelProps) {
+export function MatchPanel({ match, quickPrepHref, quickPrepField, onFinishResource }: MatchPanelProps) {
   const v = useVocab();
   const headingId = useId();
+  const [finished, setFinished] = useState<Record<string, "busy" | "done" | string>>({});
+
+  const finish = async (id: string) => {
+    if (!onFinishResource) return;
+    setFinished((f) => ({ ...f, [id]: "busy" }));
+    const error = await onFinishResource(id);
+    setFinished((f) => ({ ...f, [id]: error ?? "done" }));
+  };
 
   return (
     <section aria-labelledby={headingId} className="border border-line bg-screen">
@@ -89,11 +102,11 @@ export function MatchPanel({ match, quickPrepHref, quickPrepField }: MatchPanelP
                   {m.resources.length > 0 && (
                     <ul className="mt-1.5 space-y-1">
                       {m.resources.slice(0, 2).map((r) => (
-                        <li key={r.url}>
+                        <li key={r.id}>
                           <a
-                            href={r.url}
+                            href={`/learn/${encodeURIComponent(r.id)}`}
                             target="_blank"
-                            rel="noopener noreferrer"
+                            rel="noopener"
                             className="flex min-h-tap items-start gap-2 py-2.5 text-green"
                           >
                             <span className="mt-0.5 inline-block flex-none bg-canvas px-1.5 text-xs font-semibold text-ink">
@@ -105,6 +118,29 @@ export function MatchPanel({ match, quickPrepHref, quickPrepField }: MatchPanelP
                               <span className="sr-only">(opens in a new tab)</span>
                             </span>
                           </a>
+                          {onFinishResource && (
+                            <div className="-mt-1 pb-1">
+                              {finished[r.id] === "done" ? (
+                                <p className="flex items-center gap-1.5 text-sm font-semibold text-green">
+                                  <PixelIcon name="check" scale={2} /> Marked as finished
+                                </p>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={finished[r.id] === "busy"}
+                                  onClick={() => void finish(r.id)}
+                                  className="inline-flex min-h-tap items-center text-sm font-semibold text-ink underline decoration-2 underline-offset-4 disabled:opacity-60"
+                                >
+                                  I finished this
+                                </button>
+                              )}
+                              {finished[r.id] && finished[r.id] !== "done" && finished[r.id] !== "busy" && (
+                                <p role="status" className="text-sm text-alert">
+                                  {finished[r.id]}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </li>
                       ))}
                     </ul>

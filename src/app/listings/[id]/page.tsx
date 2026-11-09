@@ -17,6 +17,7 @@ import { Tag } from "@/components/ui/Tag";
 import { FIELDS, fieldLabel } from "@/lib/catalog/fields";
 import { deadlineText, postedText } from "@/lib/listings/present";
 import { SOURCE_LABEL, WORK_TYPE_LABEL } from "@/lib/listings/types";
+import { isAiEnabled } from "@/lib/ai/server";
 import { isClosed } from "@/lib/listings/listing";
 import { getListing, getListingIds } from "@/lib/listings/server";
 
@@ -107,7 +108,7 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
           {/* ---- Actions and skills fit (client) ---- */}
           <div className="mt-6 lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:mt-0">
             <Suspense fallback={<ActionsSkeleton />}>
-              <ListingActions listing={listing} quickPrepField={`${shortField} roles`} fieldShort={shortField} />
+              <ListingActions listing={listing} quickPrepField={`${shortField} roles`} fieldShort={shortField} aiEnabled={isAiEnabled()} />
             </Suspense>
           </div>
 

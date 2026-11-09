@@ -7,7 +7,7 @@ import { fieldLabel } from "@/lib/catalog/fields";
 import { skillName } from "@/lib/catalog/skills";
 import type { MatchResult } from "@/lib/matching/score";
 import type { SampleListing } from "@/lib/sample/listings";
-import { resourcesFor } from "@/lib/sample/resources";
+import { resourcesFor } from "@/lib/catalog/resources";
 import type { MatchBreakdown, MatchPart, ListingSummary } from "./types";
 
 /** Only shown when a deadline is close (14 days or less), so "Closing soon" means something. */

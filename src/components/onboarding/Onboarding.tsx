@@ -12,6 +12,8 @@ import { PixelIcon } from "@/components/ui/PixelIcon";
 import { SegmentBar } from "@/components/ui/SegmentBar";
 import { readPicks, picksQuery, withQuery } from "@/lib/listings/picks";
 import { findCityById } from "@/lib/catalog/cities";
+import { EXP } from "@/lib/game/exp";
+import { levelFor } from "@/lib/game/levels";
 import { clearDraft, draftWithAccount, loadDraft, maxStep, saveDraft, type OnboardingDraft } from "./draft";
 import { StepAccount } from "./StepAccount";
 import { StepCharacter } from "./StepCharacter";
@@ -147,6 +149,8 @@ function AllSet({ draft }: { draft: OnboardingDraft }) {
   const f = useFeatures();
   const { mode } = useGameMode();
   const city = findCityById(draft.cityId);
+  // With accounts, finishing the profile just earned +50 on the server ("Complete profile", once).
+  const start = levelFor(LIVE ? EXP.profile : 0);
   const resultsHref = withQuery(
     "/",
     picksQuery({ field: draft.field, skills: draft.skills, city, remoteOk: draft.workType !== "onsite" }),
@@ -168,7 +172,7 @@ function AllSet({ draft }: { draft: OnboardingDraft }) {
             <p className="mt-4 font-pixel text-hud uppercase text-lime">Character created</p>
             <h1 className="mt-1 text-2xl font-semibold">Welcome, {draft.username}</h1>
             <div className="mx-auto mt-4 max-w-xs text-left">
-              <ExpBar exp={0} max={100} level={1} />
+              <ExpBar exp={start.exp} max={start.expMax} level={start.level} />
             </div>
           </div>
         ) : (
@@ -176,7 +180,7 @@ function AllSet({ draft }: { draft: OnboardingDraft }) {
             <h1 className="text-2xl font-semibold">You&apos;re all set, {draft.username}</h1>
             {mode === "light" && (
               <div className="on-bezel mt-4 p-4">
-                <ExpBar exp={0} max={100} level={1} />
+                <ExpBar exp={start.exp} max={start.expMax} level={start.level} />
               </div>
             )}
           </div>

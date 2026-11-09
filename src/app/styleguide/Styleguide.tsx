@@ -81,7 +81,7 @@ const BREAKDOWN: MatchBreakdown = {
     {
       name: "MQTT",
       resources: [
-        { title: "MQTT Essentials", url: "https://www.hivemq.com/mqtt/mqtt-essentials/", type: "article" },
+        { id: "mqtt-1", title: "MQTT Essentials", url: "https://www.hivemq.com/mqtt/mqtt-essentials/", type: "article" },
       ],
     },
   ],

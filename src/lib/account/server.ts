@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { cache } from "react";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import type { ExpEvent } from "@/lib/game/exp";
 import { APPLICATION_COLUMNS, type ApplicationRow } from "@/lib/tracker/rows";
 import { accountFromRows, type Account, type ProfileRow, type RecoveryRow, type SettingsRow } from "./account";
 
@@ -20,7 +21,7 @@ export const getAccount = cache(async (): Promise<Account | null> => {
   const id = auth?.claims?.sub;
   if (!id) return null;
 
-  const [profile, skills, settings, recovery, applications] = await Promise.all([
+  const [profile, skills, settings, recovery, applications, events, badges, tips] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, username, field_id, city_name, lat, lng, radius_km, work_type, status, school_id, avatar_skin, avatar_hair, onboarded_at, created_at")
@@ -40,6 +41,15 @@ export const getAccount = cache(async (): Promise<Account | null> => {
       .order("updated_at", { ascending: false })
       .limit(500)
       .overrideTypes<ApplicationRow[], { merge: false }>(),
+    supabase
+      .from("exp_events")
+      .select("kind, ref, amount, created_at")
+      .eq("user_id", id)
+      .order("created_at")
+      .limit(10000)
+      .overrideTypes<ExpEvent[], { merge: false }>(),
+    supabase.from("user_badges").select("badge_id").eq("user_id", id).overrideTypes<{ badge_id: string }[], { merge: false }>(),
+    supabase.from("tips_progress").select("slug, done").eq("user_id", id).overrideTypes<{ slug: string; done: string[] }[], { merge: false }>(),
   ]);
 
   // A database error is shown by the error page rather than treated as "signed out",
@@ -47,7 +57,16 @@ export const getAccount = cache(async (): Promise<Account | null> => {
   // Before migration 0004 has run, the quest log table doesn't exist yet: show an empty log, not an error page.
   const noQuestLogYet = applications.error?.code === "PGRST205";
   if (noQuestLogYet) console.warn("[account] applications table missing: run supabase/migrations/0004_quest_log.sql");
-  const failed = profile.error ?? skills.error ?? settings.error ?? recovery.error ?? (noQuestLogYet ? null : applications.error);
+  // Same for the game tables before migration 0005: Level 1, no EXP.
+  const noGameYet = events.error?.code === "PGRST205" || badges.error?.code === "PGRST205";
+  if (noGameYet) console.warn("[account] game tables missing: run supabase/migrations/0005_game.sql");
+  const failed =
+    profile.error ??
+    skills.error ??
+    settings.error ??
+    recovery.error ??
+    (noQuestLogYet ? null : applications.error) ??
+    (noGameYet ? null : (events.error ?? badges.error));
   if (failed) throw new Error(`Couldn't load the account: ${failed.message}`);
   if (!profile.data) return null;
 
@@ -57,5 +76,14 @@ export const getAccount = cache(async (): Promise<Account | null> => {
     settings.data,
     recovery.data,
     noQuestLogYet ? [] : (applications.data ?? []),
+    new Date(),
+    noGameYet
+      ? { events: [], badges: [] }
+      : {
+          events: events.data ?? [],
+          badges: (badges.data ?? []).map((b) => b.badge_id),
+          // Before migration 0006 there's no tips_progress table: ticks stay on the device only.
+          tips: tips.error ? [] : (tips.data ?? []),
+        },
   );
 });

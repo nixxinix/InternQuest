@@ -5,8 +5,9 @@ import { writeJson } from "@/lib/browser/storage";
 import { parseChecklist, type ChecklistState } from "@/lib/content/checklist";
 
 /**
- * Checklist ticks for one guide, kept on this device (a convenience only).
- * TODO(Phase 3): saved per user on the server, which also grants the EXP.
+ * Checklist ticks for one guide, kept on this device so they work offline
+ * and without an account. Signed in, they're also saved on the server
+ * (tips_progress) and filled in here on a new device (seedChecklist).
  */
 const key = (slug: string) => `iq:checklist:${slug}`;
 const EVENT = "iq-checklist-change";
@@ -20,6 +21,19 @@ function subscribe(notify: () => void) {
     window.removeEventListener("storage", notify);
     window.removeEventListener(EVENT, notify);
   };
+}
+
+/** Fills this device's ticks from the server copy, only when this device has none yet. */
+export function seedChecklist(slug: string, done: string[]) {
+  try {
+    if (window.localStorage.getItem(key(slug)) || memory.has(key(slug))) return;
+  } catch {
+    if (memory.has(key(slug))) return;
+  }
+  const state = { done, rewarded: false };
+  memory.set(key(slug), JSON.stringify(state));
+  writeJson(key(slug), state);
+  window.dispatchEvent(new Event(EVENT));
 }
 
 export function useChecklist(slug: string): [ChecklistState, (next: ChecklistState) => void] {

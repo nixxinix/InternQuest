@@ -40,7 +40,22 @@ const KEEP: { what: string; why: string; howLong: string }[] = [
   },
   { what: "Your quest log and notes", why: "So you can track your applications", howLong: "Until you delete them or your account" },
   { what: "EXP, levels, badges, streaks, and leaderboard rows", why: "The game layer, if you use it", howLong: "Until you delete your account" },
+  {
+    what: "Notes on unusual activity, such as many confirmed applications within an hour",
+    why: "To keep the game fair. An admin looks; nothing is taken away automatically.",
+    howLong: "[Until reviewed, plus a set period]",
+  },
   { what: "Your settings", why: "To remember how you like the app", howLong: "Until you delete your account" },
+  {
+    what: "Tips checklist ticks, and which learning links you opened and when",
+    why: "So your progress follows you across devices, and to check \"I finished this\" before giving EXP",
+    howLong: "Until you delete your account",
+  },
+  {
+    what: "When you used the AI helper and for which listing (never the text)",
+    why: "To keep the 5-a-day limit and check \"I used this\" before giving EXP",
+    howLong: "Until you delete your account",
+  },
   {
     what: "Apply clicks: which listing, and when",
     why: "To ask “Did you apply?” and check EXP isn't faked. Companies see only totals, never who.",
@@ -199,7 +214,7 @@ export default function PrivacyPage() {
                   name into a location.
                 </li>
                 <li>
-                  <span className="font-semibold">The AI helper</span> (optional, [provider to be confirmed]): only if you use
+                  <span className="font-semibold">The AI helper</span> (optional, Anthropic&apos;s Claude): only if you use
                   it, we send your skills, the text you typed, and the listing&apos;s short description. Nothing else, and
                   the draft isn&apos;t saved unless you save it.
                 </li>

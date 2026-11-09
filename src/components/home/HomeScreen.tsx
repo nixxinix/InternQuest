@@ -54,7 +54,7 @@ function Home({ initial }: { initial: Viewer }) {
 
   const [viewer, setViewer] = useState(initial);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
-  const { reward, levelUpDialog } = useReward(viewer, setViewer);
+  const { reward, fromServer, levelUpDialog } = useReward(viewer, setViewer);
 
   const city = findCityById(viewer.cityId);
   const picks = { field: viewer.field, skills: viewer.skills, city, remoteOk: true };
@@ -66,7 +66,7 @@ function Home({ initial }: { initial: Viewer }) {
   const soon = closingSoon(listings, viewer.saved);
   const pending = viewer.pendingConfirm ? findListing(viewer.pendingConfirm) : null;
 
-  const quest = useSaveAndConfirm(setViewer, reward);
+  const quest = useSaveAndConfirm(setViewer, { reward, fromServer });
   const confirmApplied = () => {
     if (!pending) return;
     // A confirmed application also counts toward the weekly quest ("Send 4 applications").

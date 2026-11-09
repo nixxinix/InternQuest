@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { finishResource, markViewedMatch } from "@/app/actions/game";
 import { confirmApplication, saveListing, unsaveListing } from "@/app/actions/questlog";
 import { LIVE, useAccountIfAvailable } from "@/components/providers/AccountProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -20,6 +21,7 @@ import { scoreListing } from "@/lib/matching/score";
 import { isClosed, type SampleListing } from "@/lib/sample/listings";
 import type { LogEntry } from "@/lib/tracker/log";
 import { STATUS_LABEL } from "@/lib/tracker/status";
+import { AiHelper } from "./AiHelper";
 import { ApplyReturnSheet, EmailApplySheet, GuestSaveSheet, ReportSheet } from "./ListingSheets";
 import { markApplyClicked, usePendingApplyPrompt } from "./usePendingApply";
 
@@ -72,7 +74,13 @@ export function ApplyButton({ listing, onEmail, className }: { listing: SampleLi
 /* Main island                                                               */
 /* ------------------------------------------------------------------------ */
 
-type ListingActionsProps = { listing: SampleListing; quickPrepField: string; fieldShort: string };
+type ListingActionsProps = {
+  listing: SampleListing;
+  quickPrepField: string;
+  fieldShort: string;
+  /** The AI helper is on (an AI key is set on the server). */
+  aiEnabled?: boolean;
+};
 
 /**
  * Apply, Save, and the skills fit on the listing page. Signed in: the match
@@ -89,12 +97,18 @@ export function ListingActions(props: ListingActionsProps) {
 
 const NETWORK = "Couldn't reach InternQuest. Check your connection and try again.";
 
-function Actions({ listing, quickPrepField, fieldShort }: ListingActionsProps) {
+function Actions({ listing, quickPrepField, fieldShort, aiEnabled = false }: ListingActionsProps) {
   const account = useAccountIfAvailable();
   const toast = useToast();
   const [entry, setEntry] = useState<LogEntry | null>(() => account?.questLog.find((e) => e.listingId === listing.id) ?? null);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
+
+  // Tutorial: "View your top match" (+10, once). Recorded by the server; this public page shows no EXP.
+  const viewedBefore = account?.progress.tutorial.viewedMatch ?? true;
+  useEffect(() => {
+    if (LIVE && !viewedBefore && !isClosed(listing)) markViewedMatch(listing.id).catch(() => {});
+  }, [viewedBefore, listing]);
   const pathname = usePathname();
   const params = useSearchParams();
   const picks = readPicks(params);
@@ -161,6 +175,19 @@ function Actions({ listing, quickPrepField, fieldShort }: ListingActionsProps) {
       toast(r.ok ? { message: "Marked as applied. It's in your quest log.", tone: "success" } : { tone: "error", message: r.error });
     } catch {
       toast({ tone: "error", message: NETWORK });
+    }
+  };
+
+  /** "I finished this" on a learning resource: the server checks the open time, then grants EXP. */
+  const finishLearning = async (resourceId: string): Promise<string | null> => {
+    if (!LIVE) return null;
+    try {
+      const r = await finishResource(resourceId);
+      if (!r.ok) return r.error;
+      toast({ message: `Nice work on ${r.skillName}. Add it to your skills when you're ready.`, tone: "success" });
+      return null;
+    } catch {
+      return NETWORK;
     }
   };
 
@@ -268,10 +295,12 @@ function Actions({ listing, quickPrepField, fieldShort }: ListingActionsProps) {
               match={toBreakdown(listing, match, who.city)}
               quickPrepHref={`/tips/resume#${listing.field}`}
               quickPrepField={quickPrepField}
+              onFinishResource={finishLearning}
             />
             <ButtonLink href="/profile?edit=1" variant="ghost">
               Not right? Update your skills
             </ButtonLink>
+            {aiEnabled && <AiHelper listingId={listing.id} />}
           </>
         ) : account ? (
           <section className="border border-line bg-screen p-4">

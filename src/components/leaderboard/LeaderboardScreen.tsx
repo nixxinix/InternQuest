@@ -14,7 +14,18 @@ import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { viewerFromAccount } from "@/lib/account/account";
 import { cn } from "@/lib/cn";
 import { SCHOOLS } from "@/lib/catalog/schools";
-import { LEADERBOARD_LEVEL, personalBest, rankBoard, resetText, unlockDistance, type BoardGroup, type Period } from "@/lib/game/leaderboard";
+import type { BoardData } from "@/lib/game/board";
+import {
+  LEADERBOARD_LEVEL,
+  personalBest,
+  rankBoard,
+  resetText,
+  unlockDistance,
+  type BoardEntry,
+  type BoardGroup,
+  type Period,
+  type WeekTotals,
+} from "@/lib/game/leaderboard";
 import { SAMPLE_BOARD, SAMPLE_LAST_WEEK } from "@/lib/sample/leaderboard";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 
@@ -22,12 +33,12 @@ import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/view
 const LIMIT = 50;
 
 /**
- * W10 Leaderboard (Full Quest, Level 3 and up). DESIGN PREVIEW: sample board.
- * Phase 3: the server ranks (weekly_exp, Monday reset) and sends only usernames.
- * Signed in: the real account (Level 1 until Phase 3, so the board shows as locked).
- * Design preview review switches: ?mode=, ?state=new (locked), ?state=hidden (opted out), ?state=off (turned off in Settings).
+ * W10 Leaderboard (Full Quest, Level 3 and up). Signed in: the board comes
+ * from the server (`board`: usernames and EXP only, week resets Monday in
+ * Manila). Design preview: a sample board, with review switches ?mode=,
+ * ?state=new (locked), ?state=hidden (opted out), ?state=off (turned off in Settings).
  */
-export function LeaderboardScreen() {
+export function LeaderboardScreen({ board }: { board: BoardData | null }) {
   const params = useSearchParams();
   const account = useAppAccount();
   const state = account ? null : params.get("state");
@@ -38,13 +49,27 @@ export function LeaderboardScreen() {
           viewer={account ? viewerFromAccount(account) : state === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
           startHidden={account ? !account.settings.showOnLeaderboard : state === "hidden"}
           turnedOff={account ? !account.settings.leaderboard : state === "off"}
+          entries={board?.entries ?? SAMPLE_BOARD}
+          lastWeek={board ? board.lastWeek : SAMPLE_LAST_WEEK}
         />
       </ToastProvider>
     </GameModeProvider>
   );
 }
 
-function Leaderboard({ viewer, startHidden, turnedOff }: { viewer: Viewer; startHidden: boolean; turnedOff: boolean }) {
+function Leaderboard({
+  viewer,
+  startHidden,
+  turnedOff,
+  entries,
+  lastWeek,
+}: {
+  viewer: Viewer;
+  startHidden: boolean;
+  turnedOff: boolean;
+  entries: BoardEntry[];
+  lastWeek: WeekTotals | null;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -113,17 +138,17 @@ function Leaderboard({ viewer, startHidden, turnedOff }: { viewer: Viewer; start
   // ---- The board ----
   const yourSchool = viewer.school;
   const schoolName = SCHOOLS.find((s) => s.id === yourSchool)?.name ?? null;
-  const board = SAMPLE_BOARD.map((e) => (e.username === viewer.username ? { ...e, hidden } : e));
+  const board = entries.map((e) => (e.username === viewer.username ? { ...e, hidden } : e));
   const rows = rankBoard(board, { period, group, you: viewer.username, yourSchool });
   const you = rows.find((r) => r.isYou) ?? null;
   const shown = rows.slice(0, LIMIT);
   const cut = you && !shown.includes(you);
   const onlyYouHere = rows.length === 1 && you !== null;
 
-  const youWeek = SAMPLE_BOARD.find((e) => e.username === viewer.username);
+  const youWeek = entries.find((e) => e.username === viewer.username);
   const summary =
     period === "week"
-      ? personalBest({ exp: youWeek?.weekExp ?? 0, apps: youWeek?.weekApps ?? 0 }, SAMPLE_LAST_WEEK)
+      ? personalBest({ exp: youWeek?.weekExp ?? 0, apps: youWeek?.weekApps ?? 0 }, lastWeek)
       : `All time: ${viewer.totalExp.toLocaleString("en-US")} EXP and ${viewer.applicationsTotal} applications. Every one of them counts.`;
 
   /** Saves "Show me on the leaderboard" (live), rolling back if the save fails. */

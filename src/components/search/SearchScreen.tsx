@@ -44,6 +44,8 @@ import { SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 import { viewerFromAccount } from "@/lib/account/account";
 import { useFindListing, useListings } from "@/components/providers/ListingsProvider";
 import { initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
+import { finishResource, markViewedMatch } from "@/app/actions/game";
+import { LIVE } from "@/components/providers/AccountProvider";
 import { useSaveAndConfirm } from "@/components/questlog/useSaveAndConfirm";
 import { ListingPanel } from "./ListingPanel";
 
@@ -83,7 +85,7 @@ function Search({ initial }: { initial: Viewer }) {
   const listings = useListings();
   const findListing = useFindListing();
   const [viewer, setViewer] = useState(initial);
-  const { reward, levelUpDialog } = useReward(viewer, setViewer);
+  const { reward, fromServer, levelUpDialog } = useReward(viewer, setViewer);
   const { prompt, dismiss } = usePendingApplyPrompt();
 
   // ---- state from the URL ----
@@ -167,12 +169,33 @@ function Search({ initial }: { initial: Viewer }) {
     navigate(filters, id, "push");
     // Move keyboard and screen reader users to what they just opened.
     requestAnimationFrame(() => panelHeading.current?.focus({ preventScroll: true }));
+    // Tutorial: "View your top match" (+10 once, decided by the server).
+    if (LIVE && !viewer.tutorial.viewedMatch) {
+      setViewer((v0) => ({ ...v0, tutorial: { ...v0.tutorial, viewedMatch: true } }));
+      markViewedMatch(id)
+        .then((r) => {
+          if (r.ok && r.reward && r.reward.amount > 0) fromServer(r.reward, "Tutorial step done: you viewed a match.");
+        })
+        .catch(() => {});
+    }
   };
 
   // ---- actions ----
-  const quest = useSaveAndConfirm(setViewer, reward);
+  const quest = useSaveAndConfirm(setViewer, { reward, fromServer });
   const toggleSave = (id: string) => quest.toggleSave(id, viewer.saved.includes(id));
   const confirmApplied = (id: string) => void quest.confirmApplied(id);
+
+  /** "I finished this" on a learning resource: the server checks the open time and grants EXP. */
+  const finishLearning = async (resourceId: string): Promise<string | null> => {
+    try {
+      const r = await finishResource(resourceId);
+      if (!r.ok) return r.error;
+      fromServer(r.reward, `Nice work on ${r.skillName}.`);
+      return null;
+    } catch {
+      return "Couldn't reach InternQuest. Check your connection and try again.";
+    }
+  };
 
   const emailListing = emailFor ? findListing(emailFor) : null;
   const moreCount = (["field", "posted", "remote"] as FilterKey[]).filter((k) => active.includes(k)).length;
@@ -358,6 +381,7 @@ function Search({ initial }: { initial: Viewer }) {
               city={city}
               saved={viewer.saved.includes(panelListing.id)}
               onToggleSave={toggleSave}
+              onFinishResource={LIVE ? finishLearning : undefined}
               onEmail={() => setEmailFor(panelListing.id)}
               detailHref={detailHref(panelListing.id)}
               headingRef={panelHeading}

@@ -6,6 +6,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ALL_RESOURCES } from "@/lib/catalog/resources";
 import { SKILLS } from "@/lib/catalog/skills";
 import { buildSeedSql } from "@/lib/db/seedSql";
 import { dedupeKey, normalizePart } from "@/lib/listings/dedupe";
@@ -489,6 +490,142 @@ describe("quest log (applications)", () => {
       await expect(db.query("select * from public.click_logs")).rejects.toThrow(/permission denied/);
       await expect(db.query("insert into public.click_logs (internship_id, kind) values ('ulap-python', 'link')")).rejects.toThrow(/permission denied/);
     }
+  });
+});
+
+describe("EXP, badges, and the leaderboard", () => {
+  const C = "33333333-3333-4333-8333-333333333333";
+  const WEEK = "2026-11-08T16:00:00.000Z"; // Monday Nov 9, 00:00 Manila
+
+  beforeEach(async () => {
+    await wipeProfiles();
+    await db.query("insert into auth.users (id, email) values ($1, 'c@x.invalid') on conflict do nothing", [C]);
+    await signUp(A, "mika.codes");
+    await signUp(B, "ana.reyes");
+    await signUp(C, "plain.jun");
+    await db.exec("update public.profiles set onboarded_at = now()");
+    await db.query("update public.user_settings set mode = 'plain' where user_id = $1", [C]);
+  });
+
+  it("only the server writes EXP and badges; users read their own", async () => {
+    await asService();
+    await db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'profile', 'once', 50)", [A]);
+    await db.query("insert into public.user_badges (user_id, badge_id) values ($1, 'first-quest')", [A]);
+    await asUser(A);
+    expect(await rows("select kind, amount from public.exp_events")).toEqual([{ kind: "profile", amount: 50 }]);
+    expect(await rows("select badge_id from public.user_badges")).toEqual([{ badge_id: "first-quest" }]);
+    await expect(db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'confirm', 'x', 20)", [A])).rejects.toThrow(
+      /permission denied/,
+    );
+    await expect(db.query("update public.exp_events set amount = 100")).rejects.toThrow(/permission denied/);
+    await expect(db.query("insert into public.user_badges (user_id, badge_id) values ($1, 'scout')", [A])).rejects.toThrow(/permission denied/);
+    await asUser(B);
+    expect(await rows("select * from public.exp_events")).toEqual([]);
+  });
+
+  it("pays each action once (unique kind and ref) and refuses silly amounts", async () => {
+    await asService();
+    await db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'confirm', 'ulap-python', 20)", [A]);
+    await expect(db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'confirm', 'ulap-python', 20)", [A])).rejects.toThrow(
+      /exp_once/,
+    );
+    const again = await db.query(
+      "insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'confirm', 'ulap-python', 20) on conflict (user_id, kind, ref) do nothing",
+      [A],
+    );
+    expect(again.affectedRows).toBe(0);
+    await expect(db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'confirm', 'big', 500)", [A])).rejects.toThrow(
+      /amount_check/,
+    );
+  });
+
+  it("ranks Full Quest players who aren't hidden, plus you, with weekly and total EXP", async () => {
+    await asService();
+    await db.query(
+      `insert into public.exp_events (user_id, kind, ref, amount, created_at) values
+         ($1, 'profile', 'once', 50, '2026-11-02T00:00:00Z'), ($1, 'confirm', 'a', 20, '2026-11-10T00:00:00Z'),
+         ($2, 'profile', 'once', 50, '2026-11-10T00:00:00Z'),
+         ($3, 'profile', 'once', 50, '2026-11-10T00:00:00Z')`,
+      [A, B, C],
+    );
+    await db.query("insert into public.applications (user_id, title, company, status, confirmed_at) values ($1, 'T', 'C', 'applied', '2026-11-10T00:00:00Z')", [A]);
+    await db.query("update public.user_settings set show_on_leaderboard = false where user_id = $1", [B]);
+
+    const board = async (me: string) =>
+      rows<{ username: string; week_exp: number; total_exp: number; week_apps: number; hidden: boolean; is_me: boolean }>(
+        "select username, week_exp, total_exp, week_apps, hidden, is_me from public.leaderboard_entries($1, $2) order by username",
+        [me, WEEK],
+      );
+    // Mika sees herself; Ana is hidden; Jun plays Plain, so he's never listed.
+    expect(await board(A)).toEqual([{ username: "mika.codes", week_exp: 20, total_exp: 70, week_apps: 1, hidden: false, is_me: true }]);
+    // Ana still sees her own row (marked hidden), plus Mika.
+    expect((await board(B)).map((r) => [r.username, r.hidden, r.is_me])).toEqual([
+      ["ana.reyes", true, true],
+      ["mika.codes", false, false],
+    ]);
+  });
+
+  it("the leaderboard query and activity flags are server only", async () => {
+    for (const as of [asAnon, () => asUser(A)]) {
+      await as();
+      await expect(db.query("select * from public.leaderboard_entries($1, now())", [A])).rejects.toThrow(/permission denied/);
+      await expect(db.query("select * from public.activity_flags")).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it("deleting an account deletes its EXP, badges, and flags", async () => {
+    await asService();
+    await db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'profile', 'once', 50)", [A]);
+    await db.query("insert into public.user_badges (user_id, badge_id) values ($1, 'scout')", [A]);
+    await db.query("insert into public.activity_flags (user_id, reason) values ($1, 'test')", [A]);
+    await asAdmin();
+    await db.query("delete from auth.users where id = $1", [A]);
+    const [left] = await rows<{ n: number }>(
+      `select (select count(*) from public.exp_events where user_id = $1) + (select count(*) from public.user_badges where user_id = $1)
+            + (select count(*) from public.activity_flags where user_id = $1) as n`,
+      [A],
+    );
+    expect(Number(left.n)).toBe(0);
+    await db.query("insert into auth.users (id, email) values ($1, 'a@x.invalid')", [A]);
+  });
+});
+
+describe("learning, tips progress, and AI usage", () => {
+  beforeEach(async () => {
+    await wipeProfiles();
+    await signUp(A, "mika.codes");
+    await signUp(B, "ana.reyes");
+  });
+
+  it("anyone can read learning resources; nobody can change them through the API", async () => {
+    await asAnon();
+    const [r] = await rows<{ n: number }>("select count(*)::int as n from public.skill_resources");
+    expect(r.n).toBe(ALL_RESOURCES.length);
+    await expect(db.query("update public.skill_resources set url = 'https://evil.example'")).rejects.toThrow(/permission denied/);
+  });
+
+  it("users read only their own checklist progress, and can't write it directly", async () => {
+    await asService();
+    await db.query("insert into public.tips_progress (user_id, slug, done) values ($1, 'resume', '{a,b}'), ($2, 'resume', '{c}')", [A, B]);
+    await asUser(A);
+    expect(await rows("select slug, done from public.tips_progress")).toEqual([{ slug: "resume", done: ["a", "b"] }]);
+    await expect(db.query("update public.tips_progress set done = '{x}'")).rejects.toThrow(/permission denied/);
+  });
+
+  it("resource opens and AI usage are server only", async () => {
+    for (const as of [asAnon, () => asUser(A)]) {
+      await as();
+      await expect(db.query("select * from public.resource_opens")).rejects.toThrow(/permission denied/);
+      await expect(db.query("select * from public.ai_usage")).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it("accepts the new EXP kinds for resources and cover letters", async () => {
+    await asService();
+    await db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'resource', 'python', 15), ($1, 'cover_letter', 'ulap-python', 10)", [A]);
+    await expect(db.query("insert into public.exp_events (user_id, kind, ref, amount) values ($1, 'made_up', 'x', 10)", [A])).rejects.toThrow(
+      /exp_events_kind_check/,
+    );
   });
 });
 

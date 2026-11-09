@@ -1,8 +1,7 @@
 /**
- * Display-side level math for showing a reward the server already granted.
- * The server owns EXP (CLAUDE.md hard rule); the client only animates the
- * result it gets back. Phase 3 replaces the flat `expMax` with the real
- * level curve.
+ * Design-preview level math only (sample amounts, flat `expMax`). With real
+ * accounts the server owns EXP and the level curve (src/lib/game/levels.ts,
+ * src/lib/game/server.ts); screens show its numbers through useReward().fromServer.
  */
 
 export type LevelState = { level: number; exp: number; expMax: number };

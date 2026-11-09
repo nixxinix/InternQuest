@@ -19,6 +19,9 @@
    2. `supabase/migrations/0002_accounts.sql`
    3. `supabase/migrations/0003_places.sql`
    4. `supabase/migrations/0004_quest_log.sql`
+   5. `supabase/migrations/0005_game.sql`
+   6. `supabase/migrations/0006_learning.sql`, then run `supabase/seed.sql` again
+      (it adds the learning resources; running it twice is safe)
 
    Later migrations go in the same way, in number order, once each.
 

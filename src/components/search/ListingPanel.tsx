@@ -20,6 +20,8 @@ type ListingPanelProps = {
   city: City | null;
   saved: boolean;
   onToggleSave: (id: string) => void;
+  /** Signed in: "I finished this" under learning resources. */
+  onFinishResource?: (resourceId: string) => Promise<string | null>;
   onEmail: () => void;
   /** The full detail page, for opening in a new tab or sharing. */
   detailHref: string;
@@ -30,7 +32,7 @@ type ListingPanelProps = {
  * Desktop Search's right-hand panel (W4): the listing detail without leaving
  * the results. Same content order as the detail page (W5).
  */
-export function ListingPanel({ listing, match, city, saved, onToggleSave, onEmail, detailHref, headingRef }: ListingPanelProps) {
+export function ListingPanel({ listing, match, city, saved, onToggleSave, onFinishResource, onEmail, detailHref, headingRef }: ListingPanelProps) {
   const due = deadlineText(listing.deadlineInDays);
   const shortField = FIELDS.find((f) => f.id === listing.field)?.short ?? fieldLabel(listing.field);
   const where = [listing.area, match?.distanceKm != null ? formatKm(match.distanceKm) : null].filter(Boolean).join(" · ");
@@ -91,6 +93,7 @@ export function ListingPanel({ listing, match, city, saved, onToggleSave, onEmai
           match={toBreakdown(listing, match, city)}
           quickPrepHref={`/tips/resume#${listing.field}`}
           quickPrepField={`${shortField} roles`}
+          onFinishResource={onFinishResource}
         />
       ) : (
         <p className="border border-line bg-screen p-4 text-base">

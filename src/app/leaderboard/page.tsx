@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AccountScope } from "@/components/providers/AccountScope";
 import { LeaderboardScreen } from "@/components/leaderboard/LeaderboardScreen";
+import { getBoard } from "@/lib/game/board";
 import { AppShellSkeleton, SkeletonBlock } from "@/components/layout/AppShellSkeleton";
 
 export const metadata: Metadata = {
@@ -25,8 +26,13 @@ export default function LeaderboardPage() {
           </AppShellSkeleton>
         }
       >
-        <LeaderboardScreen />
+        <BoardLoader />
       </Suspense>
     </AccountScope>
   );
+}
+
+/** Ranks are computed on the server; the screen only shows them. */
+async function BoardLoader() {
+  return <LeaderboardScreen board={await getBoard()} />;
 }

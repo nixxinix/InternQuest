@@ -7,7 +7,9 @@ import { cityLabel, findCatalogCity, findCityById, geoCityId, isGeoCityId } from
 import { isFieldId, type FieldId } from "@/lib/catalog/fields";
 import { PROFILE_STATUSES, SCHOOLS } from "@/lib/catalog/schools";
 import { isSkillId } from "@/lib/catalog/skills";
+import { progressFrom, type ExpEvent, type Progress } from "@/lib/game/exp";
 import { isGameMode } from "@/lib/game/mode";
+import { manilaWeekStart, weekStartInstant } from "@/lib/game/streak";
 import { isPlaceQuery } from "@/lib/geo/nominatim";
 import { MAX_SKILLS } from "@/lib/listings/picks";
 import { WORK_TYPE_LABEL, type WorkType } from "@/lib/listings/types";
@@ -90,7 +92,15 @@ export type Account = {
   /** The quest log, newest change first. */
   questLog: LogEntry[];
   quest: QuestSummary;
+  /** EXP, level, streak, weekly quest: computed on the server from exp_events. */
+  progress: Progress;
+  badges: string[];
+  /** Checklist ticks per guide slug, saved on the server (follows you across devices). */
+  tipsProgress: Record<string, string[]>;
 };
+
+/** EXP events and badges as read for the account (own rows only). */
+export type GameRows = { events: ExpEvent[]; badges: string[]; tips?: { slug: string; done: string[] }[] };
 
 const isWorkType = (v: unknown): v is WorkType => typeof v === "string" && v in WORK_TYPE_LABEL;
 
@@ -136,7 +146,10 @@ export function accountFromRows(
   recovery: RecoveryRow | null | undefined,
   applications: ApplicationRow[] = [],
   now: Date = new Date(),
+  game: GameRows = { events: [], badges: [] },
 ): Account {
+  const weekStart = weekStartInstant(manilaWeekStart(now));
+  const confirmedThisWeek = applications.filter((r) => r.confirmed_at && r.confirmed_at >= weekStart).length;
   return {
     id: profile.id,
     username: profile.username,
@@ -153,24 +166,28 @@ export function accountFromRows(
     joinedAt: profile.created_at,
     questLog: applications.map((r) => entryFromRow(r, now)),
     quest: summarize(applications, now),
+    progress: progressFrom(game.events, { joinedAt: profile.created_at, now, confirmedThisWeek }),
+    badges: game.badges,
+    tipsProgress: Object.fromEntries((game.tips ?? []).map((t) => [t.slug, t.done])),
   };
 }
 
 /**
- * The shape the app screens use, with the quest log's saved, applied,
- * waiting, and upcoming entries. EXP, levels, streaks, and badges arrive in
- * Phase 3; until then a real account shows Level 1 and no EXP.
+ * The shape the app screens use: the quest log's saved, applied, waiting,
+ * and upcoming entries, plus the server-computed EXP, level, streak, badges,
+ * and weekly quest.
  */
 export function viewerFromAccount(a: Account): Viewer {
   const fromListings = a.questLog.filter((e) => e.listingId !== null);
+  const p = a.progress;
   return {
     username: a.username,
     look: a.look,
-    level: 1,
-    exp: 0,
-    expMax: 100,
-    streakWeeks: 0,
-    restWeekAvailable: false,
+    level: p.level,
+    exp: p.exp,
+    expMax: p.expMax,
+    streakWeeks: p.streakWeeks,
+    restWeekAvailable: p.restWeekAvailable,
     // Onboarding requires a field, so this fallback only shows mid-sign-up.
     field: a.field ?? "web",
     skills: a.skills,
@@ -179,17 +196,17 @@ export function viewerFromAccount(a: Account): Viewer {
     status: a.status,
     school: a.school,
     applicationsTotal: a.quest.confirmedCount,
-    totalExp: 0,
-    badges: [],
+    totalExp: p.totalExp,
+    badges: a.badges,
     recovery: a.recovery,
-    isNew: true,
+    isNew: p.isNew,
     tutorial: {
-      profile: a.onboarded,
-      viewedMatch: false,
-      saved: a.questLog.length > 0,
+      profile: a.onboarded || p.tutorial.profile,
+      viewedMatch: p.tutorial.viewedMatch,
+      saved: p.tutorial.saved || a.questLog.some((e) => e.listingId !== null),
       applied: a.quest.confirmedCount > 0,
     },
-    weeklyQuest: null,
+    weeklyQuest: p.weeklyQuest,
     saved: fromListings.filter((e) => e.status === "saved").map((e) => e.listingId as string),
     applied: fromListings.filter((e) => e.status !== "saved").map((e) => e.listingId as string),
     pendingConfirm: a.quest.pendingConfirm,

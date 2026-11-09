@@ -7,6 +7,7 @@
  * project. Real listings come from admin import (Phase 6) and JSearch (Phase 5).
  */
 import { FIELDS } from "@/lib/catalog/fields";
+import { ALL_RESOURCES } from "@/lib/catalog/resources";
 import { SCHOOLS } from "@/lib/catalog/schools";
 import { SKILLS, SYNONYM_GROUPS } from "@/lib/catalog/skills";
 import { dedupeKey } from "@/lib/listings/dedupe";
@@ -53,6 +54,13 @@ export function buildSeedSql(): string {
   out.push(
     "insert into public.schools (id, name) values",
     SCHOOLS.map((s) => `  (${lit(s.id)}, ${lit(s.name)})`).join(",\n") + "\non conflict (id) do update set name = excluded.name;",
+    "",
+    // Learning resources for missing skills (src/lib/catalog/resources.ts). Needs migration 0006.
+    "insert into public.skill_resources (id, skill_id, title, url, type, sort) values",
+    ALL_RESOURCES.map(
+      (r) => `  (${lit(r.id)}, ${lit(r.skillId)}, ${lit(r.title)}, ${lit(r.url)}, ${lit(r.type)}, ${Number(r.id.split("-").pop())})`,
+    ).join(",\n") +
+      "\non conflict (id) do update set skill_id = excluded.skill_id, title = excluded.title, url = excluded.url, type = excluded.type, sort = excluded.sort;",
     "",
     "-- ---- Sample listings (local development only) ----",
     "",

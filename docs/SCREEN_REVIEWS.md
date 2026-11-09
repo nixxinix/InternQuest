@@ -395,3 +395,27 @@ signed-out /home goes to /login; sign-up with a live availability check; 8 recov
 **Verified so far (production build, real project):** all Phase 1 steps still pass. The listing page switches to the member view (match "73 km from Lipa" from the saved profile, header "My home").
 
 **Waiting on setup:** migrations 0003 and 0004. Without 0004 the app still works (empty quest log, a server warning), but saving fails with an error toast. The browser test already has the Phase 2 steps (save, Apply click, confirm, quest log, add from elsewhere) and runs once the tables exist.
+
+## Phase 3. EXP, levels, streaks, badges, and the leaderboard: 2026-11-10
+
+| Check | Result |
+| ----- | ------ |
+| Server-only rewards | Every EXP amount comes back from a server action (`reward`), and the screens show only that. Users can't write `exp_events` or `user_badges` (tested). |
+| Reduced motion and modes | Same reward display as the design: a level-up card in Full Quest, a toast in Light, nothing game-like in Plain. |
+| Never shaming | Streaks hide until week 1. Personal best compares you only with your own last week. |
+| Leaderboard privacy | Usernames and EXP only. Hidden, Light, and Plain players aren't listed (tested). |
+
+**Verified so far (real project, before 0005):** Phase 1 and 2 still pass end to end. Without the game tables, every action still works, rewards are skipped, and the server log names the missing migration.
+
+**Waiting on setup:** migration 0005. The browser test then checks: tutorial to Level 2 (70 EXP), no EXP for a "Yes" within 60 seconds of the click, +20 for one 61 seconds later, and EXP surviving a reload.
+
+## Phase 4. Learning resources, tips sync, and the AI helper: 2026-11-10
+
+| Check | Result |
+| ----- | ------ |
+| Match Panel | Each missing skill lists 1 to 2 free links (49 of 51 skills). Signed in, "I finished this" sits under each; refusals explain why ("open it first", "a few minutes after opening"). |
+| AI helper | Only on the signed-in listing page, only when an AI key is set. The label "AI draft, review and edit before sending" sits above the draft, which is an editable text box. The count of drafts left is announced politely. |
+| Data | Only skills, typed text, and the listing snippet go to the AI. Outside text can't close the prompt's data tags (tested). The generated text is never stored. |
+| Privacy notice | Names Anthropic for the AI helper; lists checklist ticks, resource opens, and AI-use records. |
+
+**Not tested live yet:** needs migrations 0005 and 0006, the seed run again, and an AI key to try the helper.
