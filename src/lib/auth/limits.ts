@@ -1,0 +1,39 @@
+/**
+ * Rate limits for account actions (SPEC §14). Counted in the database
+ * (public.take_rate_limit), so they hold across serverless instances.
+ *
+ * "Network" limits are per IP address. A whole school lab often shares one
+ * address, so those are generous; the per-username limits stop guessing.
+ * Tune with pilot feedback.
+ */
+export const RATE_LIMITS = {
+  /** Wrong-or-right login tries for one username. */
+  login: { max: 10, windowSeconds: 15 * 60 },
+  /** Login tries from one network, any username. */
+  loginNetwork: { max: 100, windowSeconds: 15 * 60 },
+  /** New accounts from one network (a class signing up together fits). */
+  signup: { max: 60, windowSeconds: 60 * 60 },
+  /** Username availability checks from one network (the form checks as you type). */
+  usernameCheck: { max: 300, windowSeconds: 10 * 60 },
+  /** Recovery-code tries for one username. Codes are short, so this stays low. */
+  recover: { max: 5, windowSeconds: 60 * 60 },
+  recoverNetwork: { max: 30, windowSeconds: 60 * 60 },
+  /** Password changes (each one checks the current password). */
+  password: { max: 5, windowSeconds: 15 * 60 },
+  /** Username changes. */
+  rename: { max: 5, windowSeconds: 60 * 60 },
+  /** New recovery code sets. */
+  recoveryCodes: { max: 10, windowSeconds: 60 * 60 },
+  /** Map lookups of new places, per user (cached answers don't count). */
+  geocode: { max: 20, windowSeconds: 60 * 60 },
+  /** Nominatim's policy: at most 1 request per second from the whole app. */
+  nominatim: { max: 1, windowSeconds: 1 },
+} as const;
+
+export type RateLimitKind = keyof typeof RATE_LIMITS;
+
+export function rateLimitBucket(kind: RateLimitKind, subject: string): string {
+  return `${kind}:${subject}`.slice(0, 200);
+}
+
+export const TOO_MANY_TRIES = "Too many tries. Wait a few minutes, then try again.";

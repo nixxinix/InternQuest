@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { findSampleListing, isClosed } from "@/lib/sample/listings";
+import { isClosed } from "@/lib/listings/listing";
+import { getListing } from "@/lib/listings/server";
 
 /**
  * /go/:id: logs an Apply click, then sends the user to the original posting
@@ -15,7 +16,7 @@ import { findSampleListing, isClosed } from "@/lib/sample/listings";
  */
 export async function GET(_req: Request, ctx: RouteContext<"/go/[id]">) {
   const { id } = await ctx.params;
-  const listing = findSampleListing(id);
+  const listing = await getListing(id);
 
   if (!listing || isClosed(listing)) {
     return NextResponse.redirect(new URL(`/listings/${encodeURIComponent(id)}`, _req.url), 303);
@@ -37,7 +38,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/go/[id]">) {
  */
 export async function POST(_req: Request, ctx: RouteContext<"/go/[id]">) {
   const { id } = await ctx.params;
-  if (!findSampleListing(id)) return new NextResponse(null, { status: 404 });
+  if (!(await getListing(id))) return new NextResponse(null, { status: 404 });
   // TODO(Phase 2): insert into click_logs, same as GET.
   return new NextResponse(null, { status: 204 });
 }

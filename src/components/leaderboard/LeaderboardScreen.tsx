@@ -4,15 +4,17 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { saveSettings } from "@/app/actions/profile";
+import { LIVE, initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useVocab } from "@/components/providers/GameModeProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { Tabs } from "@/components/ui/Tabs";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { viewerFromAccount } from "@/lib/account/account";
 import { cn } from "@/lib/cn";
 import { SCHOOLS } from "@/lib/catalog/schools";
 import { LEADERBOARD_LEVEL, personalBest, rankBoard, resetText, unlockDistance, type BoardGroup, type Period } from "@/lib/game/leaderboard";
-import { isGameMode } from "@/lib/game/mode";
 import { SAMPLE_BOARD, SAMPLE_LAST_WEEK } from "@/lib/sample/leaderboard";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 
@@ -22,19 +24,20 @@ const LIMIT = 50;
 /**
  * W10 Leaderboard (Full Quest, Level 3 and up). DESIGN PREVIEW: sample board.
  * Phase 3: the server ranks (weekly_exp, Monday reset) and sends only usernames.
- * Review-only switches: ?mode=, ?state=new (locked), ?state=hidden (opted out), ?state=off (turned off in Settings).
+ * Signed in: the real account (Level 1 until Phase 3, so the board shows as locked).
+ * Design preview review switches: ?mode=, ?state=new (locked), ?state=hidden (opted out), ?state=off (turned off in Settings).
  */
 export function LeaderboardScreen() {
   const params = useSearchParams();
-  const modeParam = params.get("mode");
-  const state = params.get("state");
+  const account = useAppAccount();
+  const state = account ? null : params.get("state");
   return (
-    <GameModeProvider initialMode={isGameMode(modeParam) ? modeParam : "full"}>
+    <GameModeProvider initialMode={initialModeFor(account, params.get("mode"))} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
         <Leaderboard
-          viewer={state === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
-          startHidden={state === "hidden"}
-          turnedOff={state === "off"}
+          viewer={account ? viewerFromAccount(account) : state === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
+          startHidden={account ? !account.settings.showOnLeaderboard : state === "hidden"}
+          turnedOff={account ? !account.settings.leaderboard : state === "off"}
         />
       </ToastProvider>
     </GameModeProvider>
@@ -123,15 +126,35 @@ function Leaderboard({ viewer, startHidden, turnedOff }: { viewer: Viewer; start
       ? personalBest({ exp: youWeek?.weekExp ?? 0, apps: youWeek?.weekApps ?? 0 }, SAMPLE_LAST_WEEK)
       : `All time: ${viewer.totalExp.toLocaleString("en-US")} EXP and ${viewer.applicationsTotal} applications. Every one of them counts.`;
 
+  /** Saves "Show me on the leaderboard" (live), rolling back if the save fails. */
+  const persistHidden = async (value: boolean): Promise<boolean> => {
+    if (!LIVE) return true;
+    try {
+      const res = await saveSettings({ showOnLeaderboard: !value });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const setHiddenSaved = async (value: boolean, message: string) => {
+    const before = hidden;
+    setHidden(value);
+    if (!(await persistHidden(value))) {
+      setHidden(before);
+      toast({ message: "Couldn't save that. Check your connection and try again.", tone: "error" });
+      return;
+    }
+    toast({
+      message,
+      tone: "success",
+      action: { label: "Undo", onClick: () => void setHiddenSaved(before, before ? "You're hidden again." : "You're back on the leaderboard.") },
+    });
+  };
+
   const toggleHidden = () => {
     const next = !hidden;
-    setHidden(next);
-    // TODO(Phase 3): saves "Show me on the leaderboard" in user_settings.
-    toast({
-      message: next ? "You're hidden. Only you can see your row." : "You're back on the leaderboard.",
-      tone: "success",
-      action: { label: "Undo", onClick: () => setHidden(!next) },
-    });
+    void setHiddenSaved(next, next ? "You're hidden. Only you can see your row." : "You're back on the leaderboard.");
   };
 
   return (

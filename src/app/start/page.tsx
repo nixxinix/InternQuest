@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { OnboardingRoot } from "@/components/onboarding/Onboarding";
+import { AccountScope } from "@/components/providers/AccountScope";
+import { ListingsScope } from "@/components/providers/ListingsScope";
 
 export const metadata: Metadata = {
   title: "Create your character",
@@ -9,9 +11,13 @@ export const metadata: Metadata = {
 
 export default function StartPage() {
   return (
-    <Suspense fallback={<StartSkeleton />}>
-      <OnboardingRoot />
-    </Suspense>
+    <AccountScope>
+      <ListingsScope>
+        <Suspense fallback={<StartSkeleton />}>
+          <OnboardingRoot />
+        </Suspense>
+      </ListingsScope>
+    </AccountScope>
   );
 }
 

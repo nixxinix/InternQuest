@@ -20,7 +20,6 @@ import { cn } from "@/lib/cn";
 import { findCityById } from "@/lib/catalog/cities";
 import { FIELDS, isFieldId } from "@/lib/catalog/fields";
 import { canonicalSkill } from "@/lib/catalog/skills";
-import { isGameMode } from "@/lib/game/mode";
 import { picksQuery, withQuery } from "@/lib/listings/picks";
 import {
   MAX_QUERY_LENGTH,
@@ -40,8 +39,11 @@ import {
 } from "@/lib/listings/search";
 import { WORK_TYPE_LABEL, type WorkType } from "@/lib/listings/types";
 import { scoreListing } from "@/lib/matching/score";
-import { SAMPLE_LISTINGS, findSampleListing, isClosed } from "@/lib/sample/listings";
-import { SAMPLE_VIEWER } from "@/lib/sample/viewer";
+import { isClosed } from "@/lib/sample/listings";
+import { SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
+import { viewerFromAccount } from "@/lib/account/account";
+import { useFindListing, useListings } from "@/components/providers/ListingsProvider";
+import { initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { ListingPanel } from "./ListingPanel";
 
 /** URL params that aren't filters but must survive a filter change. */
@@ -54,22 +56,23 @@ const CHIP_OFF = "border-muted bg-screen text-ink hover:border-ink";
 const ROW = "-mx-gutter flex gap-2 overflow-x-auto px-gutter pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:px-0";
 
 /**
- * W4 Search. DESIGN PREVIEW: uses the sample user until accounts exist.
- * Review-only switches: ?mode=full|light|plain and ?state=error.
+ * W4 Search. Signed in: matches use the real profile (listings still come
+ * from the sample set until Phase 1c). Design preview: the sample user, with
+ * review-only switches ?mode=full|light|plain and ?state=error.
  */
 export function SearchScreen() {
   const params = useSearchParams();
-  const modeParam = params.get("mode");
+  const account = useAppAccount();
   return (
-    <GameModeProvider initialMode={isGameMode(modeParam) ? modeParam : "full"}>
+    <GameModeProvider initialMode={initialModeFor(account, params.get("mode"))} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
-        <Search />
+        <Search initial={account ? viewerFromAccount(account) : SAMPLE_VIEWER} />
       </ToastProvider>
     </GameModeProvider>
   );
 }
 
-function Search() {
+function Search({ initial }: { initial: Viewer }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -78,7 +81,9 @@ function Search() {
   const toast = useToast();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
-  const [viewer, setViewer] = useState(SAMPLE_VIEWER);
+  const listings = useListings();
+  const findListing = useFindListing();
+  const [viewer, setViewer] = useState(initial);
   const { reward, levelUpDialog } = useReward(viewer, setViewer);
   const { prompt, dismiss } = usePendingApplyPrompt();
 
@@ -98,7 +103,7 @@ function Search() {
 
   const city = findCityById(viewer.cityId);
   const profile = { skills: viewer.skills, fields: [viewer.field], workType: viewer.workType, city };
-  const result = searchListings(SAMPLE_LISTINGS, profile, filters);
+  const result = searchListings(listings, profile, filters);
   const active = activeFilters(filters, city !== null);
   const visible = result.items.slice(0, shown);
 
@@ -138,9 +143,9 @@ function Search() {
 
   // ---- desktop side panel ----
   const openId = params.get("open");
-  const openListing = openId ? findSampleListing(openId) : null;
+  const openListing = openId ? findListing(openId) : null;
   const panelListing =
-    openListing && !isClosed(openListing) ? openListing : result.items[0] ? findSampleListing(result.items[0].id) : null;
+    openListing && !isClosed(openListing) ? openListing : result.items[0] ? findListing(result.items[0].id) : null;
   const panelMatch =
     panelListing && viewer.skills.length > 0
       ? scoreListing(
@@ -182,7 +187,7 @@ function Search() {
       saved: v0.saved.filter((s) => s !== id),
     }));
 
-  const emailListing = emailFor ? findSampleListing(emailFor) : null;
+  const emailListing = emailFor ? findListing(emailFor) : null;
   const moreCount = (["field", "posted", "remote"] as FilterKey[]).filter((k) => active.includes(k)).length;
 
   return (

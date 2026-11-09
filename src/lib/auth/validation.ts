@@ -12,6 +12,18 @@ export const USERNAME_MAX = 20;
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;
 
+/** Same list as the `username_not_reserved` check in supabase/migrations/0001_core.sql. */
+export const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
+  "admin",
+  "administrator",
+  "internquest",
+  "support",
+  "moderator",
+  "help",
+  "root",
+  "system",
+]);
+
 export type UsernameCheck = { ok: true; value: string } | { ok: false; value: string; error: string };
 
 export function normalizeUsername(raw: string): string {
@@ -28,10 +40,14 @@ export function validateUsername(raw: string): UsernameCheck {
   if (!/^[a-z]/.test(value)) return fail("Start with a letter.");
   if (/[._]$/.test(value)) return fail("End with a letter or number.");
   if (/[._]{2}/.test(value)) return fail("Don't put two dots or underscores in a row.");
+  if (RESERVED_USERNAMES.has(value)) return fail("That name is reserved. Try another one.");
   return { ok: true, value };
 }
 
-/** Small sample; Phase 1 swaps in a larger breached-password list on the server. */
+/**
+ * Small block list, checked in the form and again on the server. A larger
+ * breached-password check (Supabase's leaked-password protection) needs a paid plan.
+ */
 const COMMON_PASSWORDS = new Set([
   "password",
   "password1",

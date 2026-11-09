@@ -7,7 +7,11 @@ import { Avatar } from "@/components/game/Avatar";
 import { Badge } from "@/components/game/Badge";
 import { ExpBar } from "@/components/game/ExpBar";
 import { StreakFlame } from "@/components/game/StreakFlame";
+import { logOut } from "@/app/actions/auth";
+import { saveProfile } from "@/app/actions/profile";
+import { FormError } from "@/components/auth/AuthShell";
 import { AppShell } from "@/components/layout/AppShell";
+import { LIVE, initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useVocab } from "@/components/providers/GameModeProvider";
 import { Button } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
@@ -15,12 +19,12 @@ import { Sheet } from "@/components/ui/Sheet";
 import { SkillChip } from "@/components/ui/SkillChip";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
 import type { SpriteName } from "@/components/ui/sprites";
-import { findCityById } from "@/lib/catalog/cities";
+import { viewerFromAccount } from "@/lib/account/account";
+import { cityLabel, findCityById } from "@/lib/catalog/cities";
 import { fieldLabel, type FieldId } from "@/lib/catalog/fields";
 import { PROFILE_STATUSES, SCHOOLS } from "@/lib/catalog/schools";
 import { skillName } from "@/lib/catalog/skills";
 import { badgeList } from "@/lib/game/badges";
-import { isGameMode } from "@/lib/game/mode";
 import { WORK_TYPE_LABEL } from "@/lib/listings/types";
 import { profileErrors, type ProfileValues } from "@/lib/profile/validate";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
@@ -28,16 +32,20 @@ import { ProfileFields } from "./ProfileFields";
 import { ShareCardEditor } from "./ShareCard";
 
 /**
- * W9 Profile (character sheet) and share card. DESIGN PREVIEW: sample user.
- * Review-only switches: ?mode=full|light|plain, ?state=new. Editing is ?edit=1 so Back leaves it.
+ * W9 Profile (character sheet) and share card. Signed in: the real account,
+ * and Save writes to the database. Design preview: the sample user, with
+ * review-only switches ?mode=full|light|plain, ?state=new.
+ * Editing is ?edit=1 so Back leaves it.
  */
 export function ProfileScreen() {
   const params = useSearchParams();
-  const modeParam = params.get("mode");
+  const account = useAppAccount();
   return (
-    <GameModeProvider initialMode={isGameMode(modeParam) ? modeParam : "full"}>
+    <GameModeProvider initialMode={initialModeFor(account, params.get("mode"))} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
-        <Profile initial={params.get("state") === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER} />
+        <Profile
+          initial={account ? viewerFromAccount(account) : params.get("state") === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
+        />
       </ToastProvider>
     </GameModeProvider>
   );
@@ -84,11 +92,24 @@ function Profile({ initial }: { initial: Viewer }) {
         <EditProfile
           viewer={viewer}
           onCancel={stopEdit}
-          onSave={(values) => {
-            // Phase 1: server action saves and re-validates; matches refresh from the new profile.
-            setViewer((v0) => ({ ...v0, ...values }));
+          onSave={async ({ cityText, ...values }) => {
+            let cityId = values.cityId;
+            if (LIVE) {
+              let error: string | null = null;
+              try {
+                const res = await saveProfile({ ...values, cityText });
+                if (res.ok) cityId = res.cityId;
+                else error = res.error;
+              } catch {
+                error = "Couldn't save. Check your connection and try again.";
+              }
+              if (error) return error;
+            }
+            setViewer((v0) => ({ ...v0, ...values, cityId }));
             toast({ message: "Profile saved. Your matches are updated.", tone: "success" });
             stopEdit();
+            if (LIVE) router.refresh();
+            return null;
           }}
         />
       </AppShell>
@@ -268,14 +289,15 @@ function NavRow({ href, icon, label }: { href: string; icon: SpriteName; label: 
   );
 }
 
-/** TODO(Phase 1): a server action that ends the session, then goes to the landing page. */
+/** Ends the session on the server, then goes to the landing page. A real form, so it works before JavaScript loads. */
 function LogOutButton() {
-  const router = useRouter();
   return (
-    <button type="button" onClick={() => router.push("/")} className="flex min-h-tap w-full items-center gap-3 py-3 text-left text-base font-semibold">
-      <PixelIcon name="close" scale={3} />
-      Log out
-    </button>
+    <form action={logOut}>
+      <button type="submit" className="flex min-h-tap w-full items-center gap-3 py-3 text-left text-base font-semibold">
+        <PixelIcon name="close" scale={3} />
+        Log out
+      </button>
+    </form>
   );
 }
 
@@ -287,14 +309,17 @@ function EditProfile({
   onCancel,
 }: {
   viewer: Viewer;
-  /** Only called once valid, so the field is always set. */
-  onSave: (v: ProfileValues & { field: FieldId }) => void;
+  /** Only called once valid, so the field is always set. Resolves to an error message, or null when saved. */
+  onSave: (v: ProfileValues & { field: FieldId; cityText: string }) => Promise<string | null>;
   onCancel: () => void;
 }) {
   const f = useFeatures();
   const uid = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [values, setValues] = useState<ProfileValues>({
     look: viewer.look,
     field: viewer.field,
@@ -304,15 +329,16 @@ function EditProfile({
     status: viewer.status,
     school: viewer.school,
   });
-  const [cityText, setCityText] = useState(findCityById(viewer.cityId)?.name ?? "");
+  const [cityText, setCityText] = useState(cityLabel(findCityById(viewer.cityId)));
   const [tried, setTried] = useState(false);
 
   // Entering edit mode moves focus to its heading, so screen readers know the page changed.
   useEffect(() => heading.current?.focus(), []);
 
-  const submit = () => {
+  const submit = async () => {
     setTried(true);
-    const errors = profileErrors(values, cityText);
+    setSaveError(null);
+    const errors = profileErrors(values, cityText, { anyPlace: LIVE });
     if (errors.field || errors.city) {
       requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
@@ -321,7 +347,15 @@ function EditProfile({
       requestAnimationFrame(() => document.getElementById(`${uid}-q`)?.focus());
       return;
     }
-    if (values.field) onSave({ ...values, field: values.field });
+    if (!values.field) return;
+    setBusy(true);
+    // An empty city box means "no city", even if one was picked before.
+    const error = await onSave({ ...values, field: values.field, cityId: cityText.trim() ? values.cityId : null, cityText });
+    setBusy(false);
+    if (error) {
+      setSaveError(error);
+      requestAnimationFrame(() => errorRef.current?.focus());
+    }
   };
 
   return (
@@ -330,13 +364,18 @@ function EditProfile({
         {f.avatar ? "Edit character sheet" : "Edit profile"}
       </h1>
       <p className="mt-1 text-base text-muted">Your matches update as soon as you save.</p>
+      {saveError && (
+        <div ref={errorRef} tabIndex={-1} className="focus:outline-none">
+          <FormError message={saveError} />
+        </div>
+      )}
       <form
         ref={formRef}
         noValidate
         className="mt-6"
         onSubmit={(e) => {
           e.preventDefault();
-          submit();
+          void submit();
         }}
       >
         <ProfileFields
@@ -350,7 +389,7 @@ function EditProfile({
         <p className="mt-6 text-sm text-muted">Your username and password are in Settings.</p>
         {/* Sticky on phones so Save is always in reach on a long form. */}
         <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 -mx-gutter mt-4 flex gap-2 border-t border-line bg-canvas px-gutter py-3 lg:static lg:mx-0 lg:border-0 lg:px-0">
-          <Button type="submit" size="lg" className="flex-1 sm:flex-none">
+          <Button type="submit" size="lg" className="flex-1 sm:flex-none" loading={busy}>
             Save changes
           </Button>
           <Button variant="secondary" size="lg" onClick={onCancel}>

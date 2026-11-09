@@ -19,6 +19,16 @@ const UPDATED = "November 9, 2026";
 const KEEP: { what: string; why: string; howLong: string }[] = [
   { what: "Username and password (stored scrambled, never readable)", why: "To sign you in", howLong: "Until you delete your account" },
   {
+    what: "When you agreed to this notice and confirmed your age",
+    why: "To show you gave your consent at sign-up",
+    howLong: "Until you delete your account",
+  },
+  {
+    what: "Counts of recent sign-in tries, per username and per network (the network address is scrambled first)",
+    why: "To stop people guessing passwords",
+    howLong: "Up to 24 hours",
+  },
+  {
     what: "Recovery email or recovery codes (optional; codes stored scrambled)",
     why: "To reset a forgotten password",
     howLong: "Until you remove it or delete your account",
@@ -229,8 +239,8 @@ export default function PrivacyPage() {
                 </li>
               </ul>
               <p className="mt-3">
-                [Age rule to be decided before launch: whether users under 18, such as senior high school students, can sign
-                up, and if so with what consent.]
+                To sign up, you need to be 18 or older, or have your parent&apos;s or guardian&apos;s permission. [To be
+                confirmed by a legal review before launch.]
               </p>
             </Section>
 

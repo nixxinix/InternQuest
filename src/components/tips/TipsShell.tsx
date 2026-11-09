@@ -4,8 +4,11 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useReward } from "@/components/game/useReward";
 import { AppShell } from "@/components/layout/AppShell";
+import { AppShellSkeleton, SkeletonBlock } from "@/components/layout/AppShellSkeleton";
+import { initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useGameMode } from "@/components/providers/GameModeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
+import { viewerFromAccount } from "@/lib/account/account";
 import { isGameMode } from "@/lib/game/mode";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 
@@ -19,23 +22,54 @@ export function useTips(): TipsContextValue {
 }
 
 /**
- * App frame for Tips. Unlike the other app screens, it doesn't wait for the
- * URL before rendering, so the guide text is in the server HTML (fast on weak
- * phones, readable without JavaScript). DESIGN PREVIEW: sample user; review
- * switches ?mode= and ?state=new are applied after load.
+ * App frame for Tips (pages wrap it in <AccountScope>). The guide text is
+ * rendered on the server and streams in with the frame. Signed in: the real
+ * account. Design preview: the sample user, with review switches ?mode= and
+ * ?state=new applied after load.
  */
 export function TipsShell({ children, bottomNav = true }: { children: ReactNode; bottomNav?: boolean }) {
   return (
-    <GameModeProvider>
+    <Suspense
+      fallback={
+        <AppShellSkeleton label="Loading tips">
+          <div className="space-y-4">
+            <SkeletonBlock className="h-8 w-1/2" />
+            <SkeletonBlock className="h-4 w-3/4" />
+            <SkeletonBlock className="h-40" />
+          </div>
+        </AppShellSkeleton>
+      }
+    >
+      <WithAccount bottomNav={bottomNav}>{children}</WithAccount>
+    </Suspense>
+  );
+}
+
+function WithAccount({ children, bottomNav }: { children: ReactNode; bottomNav: boolean }) {
+  const account = useAppAccount();
+  return (
+    <GameModeProvider initialMode={account?.settings.mode} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
-        <Inner bottomNav={bottomNav}>{children}</Inner>
+        <Inner initial={account ? viewerFromAccount(account) : SAMPLE_VIEWER} preview={!account} bottomNav={bottomNav}>
+          {children}
+        </Inner>
       </ToastProvider>
     </GameModeProvider>
   );
 }
 
-function Inner({ children, bottomNav }: { children: ReactNode; bottomNav: boolean }) {
-  const [viewer, setViewer] = useState<Viewer>(SAMPLE_VIEWER);
+function Inner({
+  initial,
+  preview,
+  children,
+  bottomNav,
+}: {
+  initial: Viewer;
+  preview: boolean;
+  children: ReactNode;
+  bottomNav: boolean;
+}) {
+  const [viewer, setViewer] = useState<Viewer>(initial);
   const { reward, levelUpDialog } = useReward(viewer, setViewer);
   return (
     <TipsContext.Provider value={{ viewer, reward }}>
@@ -43,14 +77,16 @@ function Inner({ children, bottomNav }: { children: ReactNode; bottomNav: boolea
         {children}
       </AppShell>
       {levelUpDialog}
-      <Suspense fallback={null}>
-        <ReviewSwitches onNewUser={() => setViewer(SAMPLE_NEW_VIEWER)} />
-      </Suspense>
+      {preview && (
+        <Suspense fallback={null}>
+          <ReviewSwitches onNewUser={() => setViewer(SAMPLE_NEW_VIEWER)} />
+        </Suspense>
+      )}
     </TipsContext.Provider>
   );
 }
 
-/** Review-only: applies ?mode= and ?state=new after the page loads. Removed in Phase 1 and 3. */
+/** Design preview only: applies ?mode= and ?state=new after the page loads. */
 function ReviewSwitches({ onNewUser }: { onNewUser: () => void }) {
   const params = useSearchParams();
   const { setMode } = useGameMode();

@@ -1,6 +1,7 @@
 "use client";
 
 import { AVATAR_PRESETS } from "@/components/ui/sprites";
+import type { Account } from "@/lib/account/account";
 import type { FieldId } from "@/lib/catalog/fields";
 import type { GameMode } from "@/lib/game/mode";
 import type { Picks } from "@/lib/listings/picks";
@@ -79,6 +80,22 @@ export function clearDraft() {
   } catch {
     // ignore
   }
+}
+
+/**
+ * With real accounts, the server is the truth for step 1: signed in means the
+ * account exists (resume at step 2 on any device), signed out means start over.
+ */
+export function draftWithAccount(d: OnboardingDraft, account: Account | null): OnboardingDraft {
+  if (!account) return { ...d, accountDone: false };
+  return {
+    ...d,
+    username: account.username,
+    accountDone: true,
+    recovery: account.recovery.kind !== "none" ? account.recovery.kind : d.recovery,
+    mode: d.styleDone ? d.mode : account.settings.mode,
+    look: d.styleDone ? d.look : account.look,
+  };
 }
 
 /** Highest step the visitor may open (2 and 3 are skippable but must be passed through). */

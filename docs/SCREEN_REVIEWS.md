@@ -305,3 +305,69 @@ The URL also keeps `?period=all` and `?group=school`.
 - The server-side `weekly_exp` ranking, the Monday reset job, and last week's totals.
 - "Hide me" saving to `user_settings`.
 - The real level curve for "EXP away".
+
+## W13. Company: entry, register, dashboard, post form: 2026-11-09
+
+Review-only URL switches:
+- Dashboard: `?state=pending|approved|rejected` and `?saved=draft|published`.
+- Post form: `?id=<posting>` (edit) and `?state=pending|rejected` (Publish locked).
+
+| Check | Result |
+| ----- | ------ |
+| No game elements? | Yes. There's no GameModeProvider, a plain wordmark (decision #91), no EXP, no pixel font, and no game words. Shared Tabs now show plain digits outside the game. |
+| What to do next in 3 seconds? | Entry: "Register your company". Dashboard: "New listing", with the status banner above it when pending or rejected. Post form: fill top to bottom, while the checklist says what's left. |
+| One clear primary action? | Yes on each page. Publish is the one primary button; when locked, it says why (decision #95). |
+| 360px and 1280px | Pass. The post form puts the preview on the right on desktop, and just above the buttons on phones. |
+| Loading, empty, error | Skeletons. Empty tabs explain themselves. Every field error sits next to its field, focus moves to the first one, and a summary line sits above the buttons. Rejected: the reason plus "Register again". |
+| Copy | Plain and specific: "We need an email on your company's own domain to verify you." One rule stated up front: never ask interns to pay. |
+| Contrast and keyboard | Native radios for work type, allowance, apply method, and Required / Nice to have. The preview card is `inert` (not a fake link in the tab order). Close and Delete ask first and offer Undo. |
+
+**Security and trust:**
+- Free domains are blocked (tested).
+- Application emails must be on the company's own domain (decision #94).
+- Apply links must be https.
+- Companies only ever see click totals.
+
+**Not wired yet (Phase 6):**
+- Company auth (Supabase Auth with a real email) and the confirmation email.
+- The `companies` and `company_verification` tables, and saving postings.
+- The "website loads" check (a server fetch).
+- Editing loads the same sample content for every posting.
+
+## W14. Admin queue: 2026-11-09
+
+| Check | Result |
+| ----- | ------ |
+| One screen, one decision? | Yes. The automatic checks or the evidence come first, then Decision: action, then reason, then confirm. The next item opens automatically (decision #98). |
+| 360px and 1280px | Pass. Desktop: list and decision side by side. Phones: the list, then the item with "Back to the list" (browser Back works too). |
+| Loading, empty, error | Skeleton. Each empty tab says "All caught up." A refused decision (no reason, or already decided) shows an error toast (tested). |
+| No game elements? | Yes. |
+| Contrast and keyboard | Check results are written out in words ("Failed: Website didn't load"), not just icons. The queue switcher is navigation with `aria-current`. Opening an item moves focus to its heading. Reporters are never shown. |
+
+**Verified:** approve, hide, and clear each leave the queue and add an audit entry ("Audit log (1)"). The EasyOJT report shows "Hidden automatically" at 4 payment reports.
+
+**⚠ Security:** `/admin` has no login yet. It shows only sample data, with a visible note, and must sit behind an admin role check (middleware plus RLS) before any deployment with real data (decision #100).
+
+**Not wired yet (Phase 6):** the admin role, server actions, the `admin_audit` table, CSV import with a dry-run preview, the burst-detection job (rule tested), and emails to companies on approve or reject.
+
+## Design phase wrap-up: 2026-11-09
+
+- All 15 wireframed screens are built as previews: W0–W14.
+- A production build was checked on 17 pages with no React or hydration errors.
+- During this pass, the dev server on port 3000 showed two hydration mismatches. Both came from the dev server serving stale code (data-shell, Tabs), not from the code itself.
+
+## Phase 1b. Log in, reset password, and real accounts: 2026-11-09
+
+| Check | Result |
+| ----- | ------ |
+| One screen, one decision? | Yes. Log in: username and password, then "Forgot your password?" or "Create your character". Reset: username, code, new password. |
+| 360px and 1280px | Pass. Same narrow column and bezel header as onboarding. |
+| Loading, empty, error | Skeleton while the form loads. Errors show in one banner at the top that takes focus. Login errors never say whether a username exists. "Too many tries" has its own message. |
+| No game elements? | Yes. Nobody has picked a play style before logging in. |
+| Contrast and keyboard | Real forms (they work before JavaScript loads). The username survives a failed try; the password clears. The reset success heading takes focus. |
+
+**Verified (production build, live keys):** signed-out visitors to /home, /settings, /tips/resume, and /quest-log are sent to /login, which remembers the page (`?next=`). The landing, privacy, login, and sign-up pages load. Supabase accepted an internal sign-in address: a throwaway user was created, signed in, and deleted.
+
+**Changed on existing screens:** sign-up step 1 adds the age checkbox (decision #102). Step 2 shows codes only until an email service exists (#104). Settings gains "Log out", and every setting saves to the server with rollback if a save fails. Profile > Edit saves for real. The leaderboard's "Hide me" saves too.
+
+**Not tested end to end yet:** sign-up through to Home, needing migrations 0001 and 0002 plus the seed in the Supabase project (docs/SUPABASE_SETUP.md).

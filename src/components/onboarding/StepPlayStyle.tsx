@@ -1,6 +1,10 @@
 "use client";
 
+import { useRef, useState } from "react";
+import { saveSettings } from "@/app/actions/profile";
+import { FormError } from "@/components/auth/AuthShell";
 import { Avatar } from "@/components/game/Avatar";
+import { LIVE } from "@/components/providers/AccountProvider";
 import { useGameMode } from "@/components/providers/GameModeProvider";
 import { Button } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
@@ -12,10 +16,35 @@ import { StepHeading, type StepProps } from "./shared";
 /** Step 3. Comes before the character step so Plain users never pick an avatar they won't see. */
 export function StepPlayStyle({ draft, update, onNext, focusOnMount }: StepProps) {
   const { setMode } = useGameMode();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
 
   const choose = (m: GameMode) => {
     setMode(m); // live: the next step already adapts
     update({ mode: m });
+  };
+
+  const next = async () => {
+    setError(null);
+    if (LIVE) {
+      setBusy(true);
+      let message: string | null = null;
+      try {
+        const res = await saveSettings({ mode: draft.mode });
+        if (!res.ok) message = res.error;
+      } catch {
+        message = "Couldn't save. Check your connection and try again.";
+      }
+      setBusy(false);
+      if (message) {
+        setError(message);
+        requestAnimationFrame(() => errorRef.current?.focus());
+        return;
+      }
+    }
+    update({ styleDone: true });
+    onNext();
   };
 
   return (
@@ -66,15 +95,13 @@ export function StepPlayStyle({ draft, update, onNext, focusOnMount }: StepProps
 
       <p className="mt-4 text-sm text-muted">You can change this anytime in Settings.</p>
 
-      <Button
-        size="lg"
-        block
-        className="mt-5"
-        onClick={() => {
-          update({ styleDone: true });
-          onNext();
-        }}
-      >
+      {error && (
+        <div ref={errorRef} tabIndex={-1} className="focus:outline-none">
+          <FormError message={error} />
+        </div>
+      )}
+
+      <Button size="lg" block className="mt-5" loading={busy} onClick={() => void next()}>
         Continue with {MODE_LABELS[draft.mode].name}
       </Button>
     </>

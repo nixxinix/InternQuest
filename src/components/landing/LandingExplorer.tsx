@@ -10,13 +10,13 @@ import { Sheet } from "@/components/ui/Sheet";
 import { EmptyState } from "@/components/ui/States";
 import { cn } from "@/lib/cn";
 import { GuestSaveSheet } from "@/components/listing/ListingSheets";
+import { useListings } from "@/components/providers/ListingsProvider";
 import { CITIES, findCityByName } from "@/lib/catalog/cities";
 import { FIELDS } from "@/lib/catalog/fields";
 import { STARTER_SKILLS, canonicalSkill, searchSkills, skillName, skillsForField } from "@/lib/catalog/skills";
 import { exploreListings } from "@/lib/listings/explore";
 import { MAX_SKILLS, readPicks, withQuery } from "@/lib/listings/picks";
 import type { ListingSummary } from "@/lib/listings/types";
-import { SAMPLE_LISTINGS } from "@/lib/sample/listings";
 
 /* Phones: one swipeable row per question, so listings stay above the fold.
    Desktop (lg): rows wrap inside the sticky left column. */
@@ -37,6 +37,7 @@ export function LandingExplorer() {
   const pathname = usePathname();
   const params = useSearchParams();
   const uid = useId();
+  const listings = useListings();
 
   // ---- state from the URL (the single source of truth) ----
   const { field, skills, city, remoteOk } = readPicks(params);
@@ -60,7 +61,7 @@ export function LandingExplorer() {
   const setSkills = (next: string[]) => update({ skills: next.length ? next.slice(0, MAX_SKILLS).join(",") : null });
   const toggleSkill = (id: string) => setSkills(skills.includes(id) ? skills.filter((s) => s !== id) : [...skills, id]);
 
-  const result = exploreListings(SAMPLE_LISTINGS, { skills, field, city, remoteOk });
+  const result = exploreListings(listings, { skills, field, city, remoteOk });
 
   // Picked skills first, then the field's skills (or starter skills before a field is picked).
   // A synonym of a picked skill isn't suggested again (picking IoT already covers Embedded systems).

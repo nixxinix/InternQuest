@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { Avatar } from "@/components/game/Avatar";
+import { LIVE } from "@/components/providers/AccountProvider";
 import { useFeatures, useVocab } from "@/components/providers/GameModeProvider";
 import { ChipPicker, SelectField } from "@/components/ui/Field";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { AVATAR_PRESETS } from "@/components/ui/sprites";
 import { cn } from "@/lib/cn";
-import { CITIES, findCityByName } from "@/lib/catalog/cities";
+import { CITIES, cityLabel, findCityById, findCityByName, isGeoCityId } from "@/lib/catalog/cities";
+import { OSM_ATTRIBUTION_URL } from "@/lib/geo/nominatim";
 import { FIELDS, isFieldId } from "@/lib/catalog/fields";
 import { PROFILE_STATUSES, SCHOOLS } from "@/lib/catalog/schools";
 import { SKILLS, STARTER_SKILLS, canonicalSkill, searchSkills, skillsForField } from "@/lib/catalog/skills";
@@ -48,7 +50,7 @@ export function ProfileFields({ values, onChange, cityText, onCityText, showErro
   const [query, setQuery] = useState("");
   const [cityTouched, setCityTouched] = useState(false);
 
-  const errors = profileErrors(values, cityText);
+  const errors = profileErrors(values, cityText, { anyPlace: LIVE });
   const fieldError = showErrors ? errors.field : undefined;
   const skillsError = showErrors ? errors.skills : undefined;
   const cityError = showErrors || cityTouched ? errors.city : undefined;
@@ -135,6 +137,16 @@ export function ProfileFields({ values, onChange, cityText, onCityText, showErro
         </label>
         <p id={`${idPrefix}-city-hint`} className="text-sm text-muted">
           Used to rank listings by distance. Only the city is saved, never an exact address.
+          {LIVE && (
+            <>
+              {" "}
+              Not on the list? Type it anyway: we look it up on{" "}
+              <a href={OSM_ATTRIBUTION_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                OpenStreetMap
+              </a>{" "}
+              when you save.
+            </>
+          )}
         </p>
         <input
           id={`${idPrefix}-city`}
@@ -144,7 +156,10 @@ export function ProfileFields({ values, onChange, cityText, onCityText, showErro
             const text = e.target.value;
             onCityText(text);
             setCityTouched(false);
-            onChange({ cityId: findCityByName(text)?.id ?? null });
+            // Keep a place found earlier while its name is unchanged; otherwise use the list.
+            const current = findCityById(values.cityId);
+            const keep = current && isGeoCityId(current.id) && cityLabel(current) === text.trim();
+            onChange({ cityId: keep ? current.id : (findCityByName(text)?.id ?? null) });
           }}
           onBlur={() => setCityTouched(true)}
           autoComplete="off"

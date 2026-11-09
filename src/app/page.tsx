@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { LandingExplorer, LandingExplorerSkeleton } from "@/components/landing/LandingExplorer";
+import { ListingsScope } from "@/components/providers/ListingsScope";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 
@@ -16,9 +17,11 @@ export default function LandingPage() {
           Internships and OJT near you, matched to your skills.
         </h1>
         <p className="mt-1 text-base text-muted">No sign-up needed to look around.</p>
-        <Suspense fallback={<LandingExplorerSkeleton />}>
-          <LandingExplorer />
-        </Suspense>
+        <ListingsScope>
+          <Suspense fallback={<LandingExplorerSkeleton />}>
+            <LandingExplorer />
+          </Suspense>
+        </ListingsScope>
       </main>
       <SiteFooter />
     </>

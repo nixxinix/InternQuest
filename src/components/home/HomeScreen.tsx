@@ -5,18 +5,20 @@ import { useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useReward } from "@/components/game/useReward";
 import { AppShell } from "@/components/layout/AppShell";
+import { saveSettings } from "@/app/actions/profile";
+import { useFindListing, useListings } from "@/components/providers/ListingsProvider";
+import { LIVE, initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useGameMode, useVocab } from "@/components/providers/GameModeProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { ListingCard } from "@/components/ui/ListingCard";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { EmptyState } from "@/components/ui/States";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { viewerFromAccount } from "@/lib/account/account";
 import { findCityById } from "@/lib/catalog/cities";
-import { isGameMode } from "@/lib/game/mode";
 import { exploreListings } from "@/lib/listings/explore";
 import { picksQuery, withQuery } from "@/lib/listings/picks";
 import { closingSoon, deadlineText } from "@/lib/listings/present";
-import { SAMPLE_LISTINGS, findSampleListing } from "@/lib/sample/listings";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 
 const TOP_MATCHES = 3;
@@ -24,15 +26,16 @@ const TOP_MATCHES = 3;
 const MIN_HOME_MATCH_PCT = 40;
 
 /**
- * W3 Home. DESIGN PREVIEW: uses a sample user until accounts exist (Phase 1).
- * Review-only switches: ?mode=full|light|plain and ?state=new.
+ * W3 Home. Signed in: the real account (EXP and quests arrive in Phase 3).
+ * Design preview (no Supabase): a sample user, with review-only switches
+ * ?mode=full|light|plain and ?state=new.
  */
 export function HomeScreen() {
   const params = useSearchParams();
-  const modeParam = params.get("mode");
-  const viewer = params.get("state") === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER;
+  const account = useAppAccount();
+  const viewer = account ? viewerFromAccount(account) : params.get("state") === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER;
   return (
-    <GameModeProvider initialMode={isGameMode(modeParam) ? modeParam : "full"}>
+    <GameModeProvider initialMode={initialModeFor(account, params.get("mode"))} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
         <Home initial={viewer} />
       </ToastProvider>
@@ -41,6 +44,8 @@ export function HomeScreen() {
 }
 
 function Home({ initial }: { initial: Viewer }) {
+  const listings = useListings();
+  const findListing = useFindListing();
   const f = useFeatures();
   const v = useVocab();
   const { setMode } = useGameMode();
@@ -54,11 +59,11 @@ function Home({ initial }: { initial: Viewer }) {
   const picks = { field: viewer.field, skills: viewer.skills, city, remoteOk: true };
   const inLog = [...viewer.saved, ...viewer.applied, ...(viewer.pendingConfirm ? [viewer.pendingConfirm] : [])];
   // Only real fits on Home: a 25% listing isn't a "top match". The rest are one tap away in Search.
-  const matches = exploreListings(SAMPLE_LISTINGS, { ...picks, workType: viewer.workType, excludeIds: inLog })
+  const matches = exploreListings(listings, { ...picks, workType: viewer.workType, excludeIds: inLog })
     .items.filter((m) => (m.match?.pct ?? 0) >= MIN_HOME_MATCH_PCT)
     .slice(0, TOP_MATCHES);
-  const soon = closingSoon(SAMPLE_LISTINGS, viewer.saved);
-  const pending = viewer.pendingConfirm ? findSampleListing(viewer.pendingConfirm) : null;
+  const soon = closingSoon(listings, viewer.saved);
+  const pending = viewer.pendingConfirm ? findListing(viewer.pendingConfirm) : null;
 
   const confirmApplied = () => {
     if (!pending) return;
@@ -100,8 +105,21 @@ function Home({ initial }: { initial: Viewer }) {
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              onClick={() => {
+              onClick={async () => {
                 setMode("light");
+                if (LIVE) {
+                  let ok = false;
+                  try {
+                    ok = (await saveSettings({ mode: "light" })).ok;
+                  } catch {
+                    ok = false;
+                  }
+                  if (!ok) {
+                    setMode("full");
+                    toast({ message: "Couldn't switch just now. Try again, or use Settings.", tone: "error" });
+                    return;
+                  }
+                }
                 toast({ message: "Switched to Light. Change it anytime in Settings." });
               }}
             >
@@ -185,7 +203,7 @@ function Home({ initial }: { initial: Viewer }) {
             <RailSection title="Coming up" id="upcoming-h">
               <ul className="divide-y divide-line">
                 {viewer.upcoming.map((u) => {
-                  const l = findSampleListing(u.listingId);
+                  const l = findListing(u.listingId);
                   return (
                     <li key={u.listingId} className="py-3">
                       <p className="font-semibold">

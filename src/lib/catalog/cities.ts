@@ -1,8 +1,8 @@
 /**
  * Local city list for autocomplete (decision: no Nominatim autocomplete,
- * which its usage policy forbids). SAMPLE ONLY: approximate city-center
- * coordinates for design and testing. Phase 1 replaces this with a full
- * PSGC-based import of cities and municipalities.
+ * which its usage policy forbids). Approximate city-center coordinates.
+ * Signed-in users can also type any other city, town, or area: the server
+ * looks it up on the map once, when the profile is saved (src/lib/geo).
  */
 import type { LatLng } from "@/lib/matching/geo";
 
@@ -36,9 +36,48 @@ export const CITIES: City[] = [
   { id: "davao-city", name: "Davao City", province: "Davao del Sur", lat: 7.1907, lng: 125.4553 },
 ];
 
+/**
+ * A city or area may also be one found on the map (Nominatim). Those use an id
+ * that carries the rounded location and the name, "@14.59,121.18:Antipolo, Rizal",
+ * so every place that reads a city id (profile, URL picks) handles both kinds.
+ */
+const GEO_ID = /^@(-?\d{1,2}(?:\.\d{1,2})?),(-?\d{1,3}(?:\.\d{1,2})?):(.{1,80})$/;
+
+/** Roughly the Philippines, with a margin. Places outside it aren't accepted. */
+export function isInPhilippines(lat: number, lng: number): boolean {
+  return lat >= 4 && lat <= 21.5 && lng >= 116 && lng <= 127.5;
+}
+
+export function geoCityId(name: string, lat: number, lng: number): string {
+  const round = (x: number) => Math.round(x * 100) / 100;
+  return `@${round(lat)},${round(lng)}:${name.trim().slice(0, 80)}`;
+}
+
+export function isGeoCityId(id: string): boolean {
+  return GEO_ID.test(id);
+}
+
+function decodeGeoCity(id: string): City | null {
+  const m = GEO_ID.exec(id);
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lng = Number(m[2]);
+  const name = m[3].trim();
+  if (!name || !isInPhilippines(lat, lng)) return null;
+  const [place, ...rest] = name.split(",");
+  return { id, name: place.trim(), province: rest.join(",").trim(), lat, lng };
+}
+
 export function findCityById(id: string | null | undefined): City | null {
   if (!id) return null;
+  if (id.startsWith("@")) return decodeGeoCity(id);
   return CITIES.find((c) => c.id === id) ?? null;
+}
+
+/** "Antipolo" or "Antipolo, Rizal": what to show in a city box. */
+export function cityLabel(city: City | null): string {
+  if (!city) return "";
+  return city.id.startsWith("@") && city.province ? `${city.name}, ${city.province}` : city.name;
 }
 
 /** Matches a typed name, ignoring case, accents (ñ/n), and a trailing ", Province". */
@@ -53,4 +92,16 @@ export function findCityByName(text: string): City | null {
   const q = norm(text);
   if (!q) return null;
   return CITIES.find((c) => norm(c.name) === q) ?? null;
+}
+
+/**
+ * Stricter than findCityByName, for the server: when a province is given it
+ * must match too, so "San Juan, Batangas" isn't taken for San Juan, Metro Manila.
+ */
+export function findCatalogCity(text: string): City | null {
+  const city = findCityByName(text);
+  if (!city) return null;
+  const province = text.split(",").slice(1).join(",").trim();
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return province && norm(province) !== norm(city.province) ? null : city;
 }

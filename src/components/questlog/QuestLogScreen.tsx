@@ -4,6 +4,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { useReward } from "@/components/game/useReward";
 import { AppShell } from "@/components/layout/AppShell";
+import { useFindListing } from "@/components/providers/ListingsProvider";
+import { initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useVocab } from "@/components/providers/GameModeProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
@@ -13,10 +15,9 @@ import { EmptyState } from "@/components/ui/States";
 import { Tabs } from "@/components/ui/Tabs";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
+import { viewerFromAccount } from "@/lib/account/account";
 import { findCityById } from "@/lib/catalog/cities";
-import { isGameMode } from "@/lib/game/mode";
 import { picksQuery, withQuery } from "@/lib/listings/picks";
-import { findSampleListing } from "@/lib/sample/listings";
 import { sampleQuestLog } from "@/lib/sample/questlog";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 import {
@@ -39,21 +40,23 @@ import { AddExternalSheet } from "./AddExternalSheet";
 const isStatus = (s: string | null): s is Status => (STATUSES as readonly string[]).includes(s ?? "");
 
 /**
- * W7 Quest log. DESIGN PREVIEW: sample user and log until the database exists (Phase 2).
- * Review-only switches: ?mode=full|light|plain, ?state=new (empty log), ?state=fail (saves fail and roll back).
+ * W7 Quest log. Signed in: the real account with an empty log; changes stay
+ * on this page until the applications table arrives (Phase 2).
+ * Design preview (no Supabase): sample user and log, with review-only switches
+ * ?mode=full|light|plain, ?state=new (empty log), ?state=fail (saves fail and roll back).
  */
 export function QuestLogScreen() {
   const params = useSearchParams();
-  const modeParam = params.get("mode");
-  const state = params.get("state");
+  const account = useAppAccount();
+  const state = account ? null : params.get("state");
   const [today] = useState(() => manilaDate(new Date()));
   return (
-    <GameModeProvider initialMode={isGameMode(modeParam) ? modeParam : "full"}>
+    <GameModeProvider initialMode={initialModeFor(account, params.get("mode"))} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
         <QuestLog
           today={today}
-          initialViewer={state === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
-          initialLog={state === "new" ? [] : sampleQuestLog(today)}
+          initialViewer={account ? viewerFromAccount(account) : state === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
+          initialLog={account || state === "new" ? [] : sampleQuestLog(today)}
           failSaves={state === "fail"}
         />
       </ToastProvider>
@@ -86,6 +89,7 @@ function QuestLog({
   const v = useVocab();
   const toast = useToast();
 
+  const findListing = useFindListing();
   const [viewer, setViewer] = useState(initialViewer);
   const { reward, levelUpDialog } = useReward(viewer, setViewer);
   const [log, setLog] = useState(initialLog);
@@ -107,7 +111,7 @@ function QuestLog({
 
   const city = findCityById(viewer.cityId);
   const detailQuery = picksQuery({ field: viewer.field, skills: viewer.skills, city, remoteOk: true });
-  const deadlineOf = (e: LogEntry) => (e.listingId ? (findSampleListing(e.listingId)?.deadlineInDays ?? null) : null);
+  const deadlineOf = (e: LogEntry) => (e.listingId ? (findListing(e.listingId)?.deadlineInDays ?? null) : null);
   const groups = groupByStatus(log);
   const columns = Object.fromEntries(STATUSES.map((s) => [s, sortColumn(s, groups[s], deadlineOf)])) as Record<Status, LogEntry[]>;
 

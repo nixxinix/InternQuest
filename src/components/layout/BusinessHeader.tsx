@@ -15,8 +15,10 @@ export function BusinessHeader({ area, home, children }: { area: "for companies"
         Skip to content
       </a>
       <div className="mx-auto flex min-h-14 max-w-7xl flex-wrap items-center justify-between gap-x-3 px-gutter">
-        <Link href={home} className="inline-flex min-h-tap items-baseline gap-1.5 text-lg font-bold tracking-tight">
-          InternQuest <span className="text-base font-normal text-bezel-text">{area}</span>
+        <Link href={home} className="inline-flex min-h-tap items-center text-lg font-bold tracking-tight">
+          <span>
+            InternQuest <span className="text-base font-normal text-bezel-text">{area}</span>
+          </span>
         </Link>
         {children && <nav aria-label="Account" className="flex items-center gap-1">{children}</nav>}
       </div>

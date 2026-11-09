@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { redirect, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Avatar } from "@/components/game/Avatar";
 import { ExpBar } from "@/components/game/ExpBar";
+import { LIVE, useAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useGameMode } from "@/components/providers/GameModeProvider";
 import { ButtonLink } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { SegmentBar } from "@/components/ui/SegmentBar";
 import { readPicks, picksQuery, withQuery } from "@/lib/listings/picks";
 import { findCityById } from "@/lib/catalog/cities";
-import { clearDraft, loadDraft, maxStep, saveDraft, type OnboardingDraft } from "./draft";
+import { clearDraft, draftWithAccount, loadDraft, maxStep, saveDraft, type OnboardingDraft } from "./draft";
 import { StepAccount } from "./StepAccount";
 import { StepCharacter } from "./StepCharacter";
 import { StepPlayStyle } from "./StepPlayStyle";
@@ -23,10 +24,28 @@ export const TOTAL_STEPS = 4;
  * W2 Onboarding, "create your character". Order (decision #47):
  * 1 Account, 2 Recovery (skippable), 3 Play style, 4 Character.
  * The step lives in the URL (?step=2) so the phone Back button works.
+ * With real accounts, step 1 creates the account and each later step saves on
+ * the server; a signed-in visitor resumes where they left off.
  */
 export function OnboardingRoot() {
   const params = useSearchParams();
-  const [draft, setDraft] = useState<OnboardingDraft>(() => loadDraft(readPicks(params)));
+  const account = useAccount();
+  // Already finished: nothing to set up. (Checked before the draft is read.)
+  if (account?.onboarded) redirect("/home");
+  return <OnboardingWithDraft account={account} params={params} />;
+}
+
+function OnboardingWithDraft({
+  account,
+  params,
+}: {
+  account: ReturnType<typeof useAccount>;
+  params: ReturnType<typeof useSearchParams>;
+}) {
+  const [draft, setDraft] = useState<OnboardingDraft>(() => {
+    const d = loadDraft(readPicks(params));
+    return LIVE ? draftWithAccount(d, account) : d;
+  });
 
   const update = (patch: Partial<OnboardingDraft>) => {
     const next = { ...draft, ...patch };
@@ -121,9 +140,8 @@ function OnboardingShell({ step, onBack, children }: { step: number; onBack?: ()
 /* ------------------------------------------------------------------------ */
 
 /**
- * End of onboarding. Phase 1: the account and profile are saved on the
- * server, the +50 "complete profile" EXP is awarded there, and this goes
- * straight to Home (W3) with the tutorial checklist.
+ * End of onboarding. The profile is already saved on the server (step 4).
+ * Phase 3 awards the +50 "complete profile" EXP there, then this shows it.
  */
 function AllSet({ draft }: { draft: OnboardingDraft }) {
   const f = useFeatures();
@@ -176,7 +194,7 @@ function AllSet({ draft }: { draft: OnboardingDraft }) {
           </ul>
         </section>
 
-        <ButtonLink href={`/home?state=new&mode=${mode}`} size="lg" block className="mt-6">
+        <ButtonLink href={LIVE ? "/home" : `/home?state=new&mode=${mode}`} size="lg" block className="mt-6">
           Go to my home
         </ButtonLink>
         <Link
@@ -186,9 +204,11 @@ function AllSet({ draft }: { draft: OnboardingDraft }) {
           Or browse all matches
         </Link>
 
-        <p className="mt-4 border-l-4 border-muted bg-canvas p-3 text-sm text-muted">
-          Preview: accounts aren&apos;t saved yet while InternQuest is being built. Nothing you typed left this device.
-        </p>
+        {!LIVE && (
+          <p className="mt-4 border-l-4 border-muted bg-canvas p-3 text-sm text-muted">
+            Preview: accounts aren&apos;t saved yet while InternQuest is being built. Nothing you typed left this device.
+          </p>
+        )}
       </main>
     </>
   );

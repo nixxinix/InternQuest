@@ -16,15 +16,17 @@ import { Tag } from "@/components/ui/Tag";
 import { FIELDS, fieldLabel } from "@/lib/catalog/fields";
 import { deadlineText, postedText } from "@/lib/listings/present";
 import { SOURCE_LABEL, WORK_TYPE_LABEL } from "@/lib/listings/types";
-import { SAMPLE_LISTINGS, findSampleListing, isClosed } from "@/lib/sample/listings";
+import { isClosed } from "@/lib/listings/listing";
+import { getListing, getListingIds } from "@/lib/listings/server";
 
-export function generateStaticParams() {
-  return SAMPLE_LISTINGS.map((l) => ({ id: l.id }));
+/** The newest open listings are prerendered at build time; others render on first visit, then stay cached. */
+export async function generateStaticParams() {
+  return (await getListingIds()).map((id) => ({ id }));
 }
 
 export async function generateMetadata({ params }: PageProps<"/listings/[id]">): Promise<Metadata> {
   const { id } = await params;
-  const listing = findSampleListing(id);
+  const listing = await getListing(id);
   if (!listing) return { title: "Listing not found" };
   return {
     title: `${listing.title} at ${listing.company}`,
@@ -35,7 +37,7 @@ export async function generateMetadata({ params }: PageProps<"/listings/[id]">):
 /** W5 Listing detail. Static parts render on the server; the match and actions are a client island. */
 export default async function ListingPage({ params }: PageProps<"/listings/[id]">) {
   const { id } = await params;
-  const listing = findSampleListing(id);
+  const listing = await getListing(id);
   if (!listing) notFound();
 
   const closed = isClosed(listing);

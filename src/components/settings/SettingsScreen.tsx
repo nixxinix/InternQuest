@@ -3,17 +3,21 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { changePassword, changeUsername, deleteAccount, logOut, saveRecoveryCodes } from "@/app/actions/auth";
+import { exportMyData, saveSettings } from "@/app/actions/profile";
 import { AppShell } from "@/components/layout/AppShell";
+import { LIVE, initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useGameMode } from "@/components/providers/GameModeProvider";
 import { Button } from "@/components/ui/Button";
 import { SelectField } from "@/components/ui/Field";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { Switch } from "@/components/ui/Switch";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { viewerFromAccount } from "@/lib/account/account";
 import { downloadText } from "@/lib/browser/download";
 import { useMediaQuery } from "@/lib/browser/useMediaQuery";
 import { cn } from "@/lib/cn";
-import { GAME_MODES, MODE_LABELS, isGameMode, type GameMode } from "@/lib/game/mode";
+import { GAME_MODES, MODE_LABELS, type GameMode } from "@/lib/game/mode";
 import { sampleQuestLog } from "@/lib/sample/questlog";
 import { SAMPLE_NEW_VIEWER, SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 import {
@@ -36,24 +40,29 @@ const SECTIONS = [
   { id: "privacy", label: "Privacy" },
 ] as const;
 
+const NETWORK = "Couldn't reach InternQuest. Check your connection and try again.";
+
 /**
- * W11 Settings. DESIGN PREVIEW: sample user; changes live in this page only.
- * Phase 3 saves them to `user_settings`, Phase 1 wires the account actions.
- * Review-only switches: ?mode=full|light|plain, ?state=new.
+ * W11 Settings. Signed in: every change saves to the server on its own, and
+ * the account actions are real. Design preview: a sample user whose changes
+ * live on this page only, with review-only switches ?mode=full|light|plain, ?state=new.
  */
 export function SettingsScreen() {
   const params = useSearchParams();
-  const modeParam = params.get("mode");
+  const account = useAppAccount();
   return (
-    <GameModeProvider initialMode={isGameMode(modeParam) ? modeParam : "full"}>
+    <GameModeProvider initialMode={initialModeFor(account, params.get("mode"))} initialMotion={initialMotionFor(account)}>
       <ToastProvider>
-        <Settings initial={params.get("state") === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER} />
+        <Settings
+          initial={account ? viewerFromAccount(account) : params.get("state") === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
+          initialSettings={account?.settings ?? null}
+        />
       </ToastProvider>
     </GameModeProvider>
   );
 }
 
-function Settings({ initial }: { initial: Viewer }) {
+function Settings({ initial, initialSettings }: { initial: Viewer; initialSettings: UserSettings | null }) {
   const router = useRouter();
   const { mode, setMode, motion, setMotion } = useGameMode();
   const f = useFeatures();
@@ -61,23 +70,57 @@ function Settings({ initial }: { initial: Viewer }) {
   const osReduce = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const [viewer, setViewer] = useState(initial);
-  const [s, setS] = useState<UserSettings>({ ...DEFAULT_SETTINGS, mode });
+  const [s, setS] = useState<UserSettings>(initialSettings ?? { ...DEFAULT_SETTINGS, mode });
   const [sheet, setSheet] = useState<null | "username" | "password" | "recovery" | "delete">(null);
   const close = () => setSheet(null);
 
-  /** Every change saves on its own (W11). TODO(Phase 3): server action to user_settings. */
-  const save = (patch: Partial<UserSettings>, message = "Saved.") => {
+  /**
+   * Every change saves on its own (W11): shown right away, then saved; if the
+   * save fails, it's put back and the toast says so. `undo` rolls back anything
+   * else the change touched (play style, motion).
+   */
+  const save = async (patch: Partial<UserSettings>, message = "Saved.", undo?: () => void) => {
+    const before = s;
     setS((prev) => ({ ...prev, ...patch }));
+    if (LIVE) {
+      let ok = false;
+      try {
+        ok = (await saveSettings(patch)).ok;
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        setS(before);
+        undo?.();
+        toast({ message: "Couldn't save that change. Check your connection and try again.", tone: "error" });
+        return;
+      }
+    }
     toast({ message, tone: "success" });
   };
 
   const changeMode = (m: GameMode) => {
+    const was = mode;
     setMode(m);
-    save({ mode: m }, `Saved. You're on ${MODE_LABELS[m].name}.`);
+    void save({ mode: m }, `Saved. You're on ${MODE_LABELS[m].name}.`, () => setMode(was));
   };
 
-  const downloadData = () => {
+  const downloadData = async () => {
     const today = manilaDate(new Date());
+    if (LIVE) {
+      try {
+        const res = await exportMyData();
+        if (!res.ok) {
+          toast({ message: res.error, tone: "error" });
+          return;
+        }
+        downloadText(JSON.stringify(res.data, null, 2), `internquest-data-${res.username}-${today}.json`, "application/json");
+        toast({ message: "Your data file is downloading." });
+      } catch {
+        toast({ message: NETWORK, tone: "error" });
+      }
+      return;
+    }
     const data = buildDataExport(
       {
         account: {
@@ -193,13 +236,13 @@ function Settings({ initial }: { initial: Viewer }) {
                 label="Weekly streaks"
                 description="Counts weeks with at least one action. One rest week a month."
                 checked={s.streaks}
-                onChange={(on) => save({ streaks: on })}
+                onChange={(on) => void save({ streaks: on })}
               />
               <Switch
                 label="Leaderboard"
                 description={viewer.level < 3 ? "Unlocks at Level 3." : "Weekly and all-time ranking, by username only."}
                 checked={s.leaderboard}
-                onChange={(on) => save({ leaderboard: on })}
+                onChange={(on) => void save({ leaderboard: on })}
               />
               <Switch
                 label="Show me on the leaderboard"
@@ -207,13 +250,13 @@ function Settings({ initial }: { initial: Viewer }) {
                   s.showOnLeaderboard ? "Others can see your username and weekly EXP." : "You're hidden. You can still see the board and your own row."
                 }
                 checked={s.showOnLeaderboard}
-                onChange={(on) => save({ showOnLeaderboard: on })}
+                onChange={(on) => void save({ showOnLeaderboard: on })}
               />
               <div className="py-2">
                 <SelectField
                   label="Motivational notes"
                   value={s.notes}
-                  onChange={(e) => save({ notes: e.target.value as NoteTone })}
+                  onChange={(e) => void save({ notes: e.target.value as NoteTone })}
                   hint="The short notes on Home and after rewards."
                   options={NOTE_TONES.map((t) => ({ value: t, label: NOTE_TONE_LABEL[t] }))}
                 />
@@ -232,15 +275,16 @@ function Settings({ initial }: { initial: Viewer }) {
               }
               checked={motion !== "reduce"}
               onChange={(on) => {
+                const was = motion;
                 setMotion(on ? "system" : "reduce");
-                save({ animations: on });
+                void save({ animations: on }, "Saved.", () => setMotion(was));
               }}
             />
             <Switch
               label="Sound"
               description="Short sounds for rewards. Off by default."
               checked={s.sound}
-              onChange={(on) => save({ sound: on })}
+              onChange={(on) => void save({ sound: on })}
             />
           </Section>
 
@@ -255,13 +299,24 @@ function Settings({ initial }: { initial: Viewer }) {
                 warn={viewer.recovery.kind === "none"}
                 onClick={() => setSheet("recovery")}
               />
+              <li>
+                <form action={logOut}>
+                  <button type="submit" className="flex min-h-tap w-full items-center justify-between gap-3 py-3 text-left">
+                    <span className="text-base font-semibold">Log out</span>
+                    <span className="flex items-center gap-2 text-base text-muted">
+                      On this device
+                      <PixelIcon name="chevronRight" scale={2} />
+                    </span>
+                  </button>
+                </form>
+              </li>
             </ul>
           </Section>
 
           {/* ---------------- Privacy ---------------- */}
           <Section id="privacy" title="Privacy">
             <ul className="divide-y divide-line">
-              <ActionRow label="Download my data" value="JSON file" icon="download" onClick={downloadData} />
+              <ActionRow label="Download my data" value="JSON file" icon="download" onClick={() => void downloadData()} />
               <li>
                 <Link href="/privacy" className="flex min-h-tap items-center justify-between gap-3 py-3 text-base font-semibold">
                   Privacy notice
@@ -289,19 +344,29 @@ function Settings({ initial }: { initial: Viewer }) {
         open={sheet === "username"}
         onClose={close}
         current={viewer.username}
-        onSave={(u) => {
+        onSave={async (u) => {
+          if (LIVE) {
+            const res = await changeUsername(u);
+            if (!res.ok) return res.error;
+          }
           setViewer((v0) => ({ ...v0, username: u }));
           close();
-          toast({ message: `Saved. You're now ${u}.`, tone: "success" });
+          toast({ message: `Saved. You're now ${u}. Use it next time you log in.`, tone: "success" });
+          return null;
         }}
       />
       <PasswordSheet
         open={sheet === "password"}
         onClose={close}
         username={viewer.username}
-        onSave={() => {
+        onSave={async ({ current, next }) => {
+          if (LIVE) {
+            const res = await changePassword(current, next);
+            if (!res.ok) return res.error;
+          }
           close();
-          toast({ message: "Password changed.", tone: "success" });
+          toast({ message: "Password changed. Other devices were logged out.", tone: "success" });
+          return null;
         }}
       />
       <RecoverySheet
@@ -309,17 +374,37 @@ function Settings({ initial }: { initial: Viewer }) {
         onClose={close}
         username={viewer.username}
         recovery={viewer.recovery}
-        onChange={(r) => {
-          setViewer((v0) => ({ ...v0, recovery: r }));
-          toast({ message: r.kind === "email" ? "Recovery email saved." : "New recovery codes made.", tone: "success" });
+        onSaveCodes={async (codes) => {
+          if (LIVE) {
+            const res = await saveRecoveryCodes(codes);
+            if (!res.ok) return res.error;
+          }
+          setViewer((v0) => ({ ...v0, recovery: { kind: "codes", codesLeft: codes.length } }));
+          toast({ message: "New recovery codes made. The old ones stopped working.", tone: "success" });
+          return null;
+        }}
+        onSaveEmail={async (email) => {
+          // Only reachable once an email service is connected (src/lib/auth/features.ts).
+          setViewer((v0) => ({ ...v0, recovery: { kind: "email", email } }));
+          toast({ message: "Recovery email saved.", tone: "success" });
+          return null;
         }}
       />
       <DeleteAccountSheet
         open={sheet === "delete"}
         onClose={close}
         username={viewer.username}
-        onDownload={downloadData}
-        onDelete={() => router.push("/")}
+        onDownload={() => void downloadData()}
+        onDelete={async (typed) => {
+          if (LIVE) {
+            // On success the server signs out and sends the browser to the landing page.
+            const res = await deleteAccount(typed);
+            if (res && !res.ok) return res.error;
+            return null;
+          }
+          router.push("/");
+          return null;
+        }}
       />
     </AppShell>
   );
