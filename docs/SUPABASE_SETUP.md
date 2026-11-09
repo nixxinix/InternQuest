@@ -22,6 +22,7 @@
    5. `supabase/migrations/0005_game.sql`
    6. `supabase/migrations/0006_learning.sql`, then run `supabase/seed.sql` again
       (it adds the learning resources; running it twice is safe)
+   7. `supabase/migrations/0007_imports.sql`
 
    Later migrations go in the same way, in number order, once each.
 
@@ -61,3 +62,9 @@ Without it, only cities on our list can be picked.
 **Recovery by email** needs an email-sending service (custom SMTP, for example
 Resend's free tier). Until one is connected, recovery codes are the only way
 to reset a password, and the email option is hidden (`src/lib/auth/features.ts`).
+
+**Daily listings refresh (Phase 5):** `vercel.json` runs `/api/cron/daily` once a
+day at 04:00 Manila. On Vercel, add `CRON_SECRET` (16+ random characters) and,
+for imports, `JSEARCH_API_KEY` to the project's environment variables. To run
+it by hand: `curl -H "Authorization: Bearer <CRON_SECRET>" https://<site>/api/cron/daily`.
+Each run is logged in the `import_runs` table (counts only).

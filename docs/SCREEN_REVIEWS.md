@@ -419,3 +419,13 @@ signed-out /home goes to /login; sign-up with a live availability check; 8 recov
 | Privacy notice | Names Anthropic for the AI helper; lists checklist ticks, resource opens, and AI-use records. |
 
 **Not tested live yet:** needs migrations 0005 and 0006, the seed run again, and an AI key to try the helper.
+
+## Phase 5. Listings from JSearch and the daily refresh: 2026-11-10
+
+No new screens: imported listings appear in Search, Home, and the landing page like any other, labelled "via JSearch", with a short snippet and "Read the full posting" linking back.
+
+**Verified:** the cron endpoint refuses calls without the secret (503 while unset, 401 for a wrong one). Parsing was tested with a realistic JSearch answer: it keeps internships in the Philippines with https links, and skips the rest with a reason each (not an internship, outside the Philippines, no https link, field unclear, missing company).
+
+**Found and fixed:** skills at the end of a sentence ("Excel and SQL.") were missed because the full stop stuck to the word.
+
+**Waiting on setup:** migration 0007, CRON_SECRET, and a JSearch key, before a live run.

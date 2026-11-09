@@ -629,6 +629,48 @@ describe("learning, tips progress, and AI usage", () => {
   });
 });
 
+describe("daily refresh: expiry, one row per posting, import log", () => {
+  const add = (id: string, source: string, deadline: string | null, lastChecked: string, ref: string | null = null) =>
+    db.query(
+      `insert into public.internships (id, title, company_name, source, source_ref, field_id, area, work_type, snippet, apply_kind, apply_url, dedupe_key, deadline, last_checked)
+       values ($1, 'Test Intern', 'Test Co', $2, $5, 'web', 'Pasig', 'onsite', 'A test.', 'link', 'https://x.ph', $1, $3, $4)`,
+      [id, source, deadline, lastChecked, ref],
+    );
+
+  beforeEach(async () => {
+    await asAdmin();
+    await db.exec("delete from public.internships where id like 't5-%'");
+  });
+
+  it("hides listings past their deadline, and aggregator listings not seen for 14 days", async () => {
+    await add("t5-past", "direct", "2020-01-01", "now()");
+    await add("t5-open", "direct", "2099-01-01", "now()");
+    await add("t5-stale", "jsearch", null, new Date(Date.now() - 20 * 86_400_000).toISOString(), "r1");
+    await add("t5-fresh", "jsearch", null, new Date().toISOString(), "r2");
+    await add("t5-old-direct", "direct", null, new Date(Date.now() - 90 * 86_400_000).toISOString());
+    await asService();
+    const [r] = await rows<{ expired: number; stale: number }>("select * from public.expire_listings(14)");
+    expect(r).toEqual({ expired: 1, stale: 1 });
+    await asAdmin();
+    const active = await rows<{ id: string }>("select id from public.internships where id like 't5-%' and is_active order by id");
+    // A direct post isn't hidden for age; it has no "last seen" in a source.
+    expect(active.map((a) => a.id)).toEqual(["t5-fresh", "t5-old-direct", "t5-open"]);
+  });
+
+  it("stores each source posting once", async () => {
+    await add("t5-a", "jsearch", null, new Date().toISOString(), "same-ref");
+    await expect(add("t5-b", "jsearch", null, new Date().toISOString(), "same-ref")).rejects.toThrow(/internships_source_ref/);
+  });
+
+  it("the import log and the expiry job are server only", async () => {
+    for (const as of [asAnon, () => asUser(A)]) {
+      await as();
+      await expect(db.query("select * from public.import_runs")).rejects.toThrow(/permission denied/);
+      await expect(db.query("select * from public.expire_listings(14)")).rejects.toThrow(/permission denied/);
+    }
+  });
+});
+
 describe("listing rules", () => {
   it("rejects http apply links and a link plus an email at once", async () => {
     const base = `insert into public.internships (id, title, company_name, source, field_id, area, work_type, snippet, apply_kind, apply_url, apply_email, dedupe_key)
