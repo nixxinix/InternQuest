@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 import { useReward } from "@/components/game/useReward";
 import { AppShell } from "@/components/layout/AppShell";
 import { saveSettings } from "@/app/actions/profile";
+import { useSaveAndConfirm } from "@/components/questlog/useSaveAndConfirm";
 import { useFindListing, useListings } from "@/components/providers/ListingsProvider";
 import { LIVE, initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useGameMode, useVocab } from "@/components/providers/GameModeProvider";
@@ -65,26 +66,16 @@ function Home({ initial }: { initial: Viewer }) {
   const soon = closingSoon(listings, viewer.saved);
   const pending = viewer.pendingConfirm ? findListing(viewer.pendingConfirm) : null;
 
+  const quest = useSaveAndConfirm(setViewer, reward);
   const confirmApplied = () => {
     if (!pending) return;
     // A confirmed application also counts toward the weekly quest ("Send 4 applications").
-    reward(20, "Marked as applied.", (v0) => ({
+    void quest.confirmApplied(pending.id, (v0) => ({
       ...v0,
-      applied: [...v0.applied, pending.id],
-      pendingConfirm: null,
       weeklyQuest: v0.weeklyQuest ? { ...v0.weeklyQuest, done: Math.min(v0.weeklyQuest.total, v0.weeklyQuest.done + 1) } : null,
     }));
   };
-
-  const toggleSave = (id: string) => {
-    const was = viewer.saved.includes(id);
-    const before = viewer.saved;
-    setViewer((v0) => ({ ...v0, saved: was ? v0.saved.filter((s) => s !== id) : [...v0.saved, id] }));
-    toast({
-      message: was ? "Removed from saved." : `Saved to your ${v("tracker").toLowerCase()}.`,
-      action: { label: "Undo", onClick: () => setViewer((v0) => ({ ...v0, saved: before })) },
-    });
-  };
+  const toggleSave = (id: string) => quest.toggleSave(id, viewer.saved.includes(id));
 
   const questOrTutorial = viewer.isNew ? (
     <Tutorial viewer={viewer} />
@@ -147,7 +138,7 @@ function Home({ initial }: { initial: Viewer }) {
                 <Button onClick={confirmApplied}>Yes, I applied</Button>
                 <Button
                   variant="secondary"
-                  onClick={() => setViewer((v0) => ({ ...v0, saved: [...v0.saved, pending.id], pendingConfirm: null }))}
+                  onClick={() => void quest.notYet(pending.id)}
                 >
                   Not yet, keep it saved
                 </Button>
@@ -207,7 +198,7 @@ function Home({ initial }: { initial: Viewer }) {
                   return (
                     <li key={u.listingId} className="py-3">
                       <p className="font-semibold">
-                        {u.what} · {l?.company}
+                        {u.what} · {u.company ?? l?.company}
                       </p>
                       <p className="text-sm text-muted">
                         {u.when} · {u.how}

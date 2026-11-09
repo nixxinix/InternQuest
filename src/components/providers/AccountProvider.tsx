@@ -36,6 +36,15 @@ export function useAccount(): Account | null {
 }
 
 /**
+ * For public pages that also work signed out (listing detail, header): the
+ * account when the page has an AccountScope and someone is signed in, else null.
+ */
+export function useAccountIfAvailable(): Account | null {
+  const promise = useContext(AccountContext);
+  return promise ? use(promise) : null;
+}
+
+/**
  * For the intern app screens: the account when live (sending signed-out
  * visitors to log in and unfinished sign-ups back to onboarding), or null in
  * the design preview, where screens use their sample user.

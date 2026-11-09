@@ -395,12 +395,12 @@ describe("listings read back from the database", () => {
   it("map to the same listings the app shows", async () => {
     await asAnon();
     const data = await rows<ListingRow>(
-      `select i.*, coalesce((select json_agg(json_build_object('skill_id', s.skill_id, 'required', s.required))
+      `select i.*, i.deadline::text as deadline, coalesce((select json_agg(json_build_object('skill_id', s.skill_id, 'required', s.required))
                               from public.internship_skills s where s.internship_id = i.id), '[]') as internship_skills
          from public.internships i`,
     );
     const now = new Date();
-    const mapped = new Map(data.map((r) => [r.id, listingFromRow({ ...r, deadline: r.deadline && String(r.deadline).slice(0, 10) }, manilaDate(now), now)]));
+    const mapped = new Map(data.map((r) => [r.id, listingFromRow(r, manilaDate(now), now)]));
     expect(mapped.size).toBe(SAMPLE_LISTINGS.length);
     for (const sample of SAMPLE_LISTINGS) {
       const l = mapped.get(sample.id);
@@ -417,6 +417,77 @@ describe("listings read back from the database", () => {
         sample.deadlineInDays === null ? null : sample.deadlineInDays < 0,
       );
       expect(new Set(l!.skills.map((x) => `${x.id}:${x.required}`))).toEqual(new Set(sample.skills.map((x) => `${x.id}:${x.required}`)));
+    }
+  });
+});
+
+describe("quest log (applications)", () => {
+  const add = (listing: string | null, extra = "") =>
+    db.query(
+      `insert into public.applications (internship_id, title, company${extra ? ", " + extra.split("=")[0] : ""}) values ($1, 'T', 'C'${extra ? ", " + extra.split("=")[1] : ""}) returning id`,
+      [listing],
+    );
+
+  beforeEach(async () => {
+    await wipeProfiles();
+    await signUp(A, "mika.codes");
+    await signUp(B, "ana.reyes");
+  });
+
+  it("is private: users see and change only their own entries", async () => {
+    await asUser(A);
+    const { rows: mine } = await add("kalye-data-analyst");
+    await asUser(B);
+    expect(await rows("select id from public.applications")).toEqual([]);
+    expect((await db.query("update public.applications set note = 'x' where id = $1", [(mine[0] as { id: string }).id])).affectedRows).toBe(0);
+    expect((await db.query("delete from public.applications where id = $1", [(mine[0] as { id: string }).id])).affectedRows).toBe(0);
+    await expect(
+      db.query("insert into public.applications (user_id, title, company) values ($1, 'T', 'C')", [A]),
+    ).rejects.toThrow(/permission denied|row-level security/);
+    await asAnon();
+    await expect(db.query("select * from public.applications")).rejects.toThrow(/permission denied/);
+  });
+
+  it("only the server can mark an application confirmed or record a click", async () => {
+    await asUser(A);
+    await expect(add("kalye-data-analyst", "confirmed_at=now()")).rejects.toThrow(/permission denied/);
+    const { rows: r } = await add("kalye-data-analyst");
+    const id = (r[0] as { id: string }).id;
+    await expect(db.query("update public.applications set confirmed_at = now() where id = $1", [id])).rejects.toThrow(/permission denied/);
+    await expect(db.query("update public.applications set last_clicked_at = now() where id = $1", [id])).rejects.toThrow(/permission denied/);
+    expect((await db.query("update public.applications set status = 'applied', applied_on = current_date, note = 'sent CV' where id = $1", [id])).affectedRows).toBe(1);
+    await asService();
+    expect((await db.query("update public.applications set confirmed_at = now() where id = $1", [id])).affectedRows).toBe(1);
+  });
+
+  it("keeps one entry per listing, and outcomes only in Result", async () => {
+    await asUser(A);
+    await add("kalye-data-analyst");
+    await expect(add("kalye-data-analyst")).rejects.toThrow(/duplicate key/);
+    await add(null);
+    await add(null); // hand-added entries can repeat
+    await expect(add("ulap-python", "outcome='offer'")).rejects.toThrow(/outcome_only_for_result/);
+    await expect(add(null, "url='javascript:alert(1)'")).rejects.toThrow(/url_check/);
+  });
+
+  it("deleting an account removes the log and unlinks Apply clicks (listing totals stay)", async () => {
+    await asService();
+    await db.query("insert into public.click_logs (internship_id, user_id, kind) values ('kalye-data-analyst', $1, 'link'), ('kalye-data-analyst', null, 'link')", [A]);
+    await asUser(A);
+    await add("kalye-data-analyst");
+    await asAdmin();
+    await db.query("delete from auth.users where id = $1", [A]);
+    expect(await rows("select count(*)::int as n from public.applications where user_id = $1", [A])).toEqual([{ n: 0 }]);
+    expect(await rows("select count(*)::int as n, count(user_id)::int as linked from public.click_logs")).toEqual([{ n: 2, linked: 0 }]);
+    await db.exec("delete from public.click_logs");
+    await db.query("insert into auth.users (id, email) values ($1, 'a@x.invalid')", [A]);
+  });
+
+  it("keeps Apply clicks away from the public API", async () => {
+    for (const as of [asAnon, () => asUser(A)]) {
+      await as();
+      await expect(db.query("select * from public.click_logs")).rejects.toThrow(/permission denied/);
+      await expect(db.query("insert into public.click_logs (internship_id, kind) values ('ulap-python', 'link')")).rejects.toThrow(/permission denied/);
     }
   });
 });

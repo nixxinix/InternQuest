@@ -3,16 +3,23 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/Button";
+import { confirmApplication, saveListing, unsaveListing } from "@/app/actions/questlog";
+import { LIVE, useAccountIfAvailable } from "@/components/providers/AccountProvider";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { MatchPanel } from "@/components/ui/MatchPanel";
 import { PixelIcon } from "@/components/ui/PixelIcon";
+import { ToastProvider, useToast } from "@/components/ui/Toast";
+import type { Account } from "@/lib/account/account";
 import { cn } from "@/lib/cn";
+import { findCityById } from "@/lib/catalog/cities";
 import { canonicalSkill, skillName } from "@/lib/catalog/skills";
 import { MAX_SKILLS, picksQuery, readPicks, withQuery } from "@/lib/listings/picks";
 import { deadlineText, toBreakdown } from "@/lib/listings/present";
 import { DEFAULT_RADIUS_KM } from "@/lib/matching/config";
 import { scoreListing } from "@/lib/matching/score";
 import { isClosed, type SampleListing } from "@/lib/sample/listings";
+import type { LogEntry } from "@/lib/tracker/log";
+import { STATUS_LABEL } from "@/lib/tracker/status";
 import { ApplyReturnSheet, EmailApplySheet, GuestSaveSheet, ReportSheet } from "./ListingSheets";
 import { markApplyClicked, usePendingApplyPrompt } from "./usePendingApply";
 
@@ -65,15 +72,28 @@ export function ApplyButton({ listing, onEmail, className }: { listing: SampleLi
 /* Main island                                                               */
 /* ------------------------------------------------------------------------ */
 
-export function ListingActions({
-  listing,
-  quickPrepField,
-  fieldShort,
-}: {
-  listing: SampleListing;
-  quickPrepField: string;
-  fieldShort: string;
-}) {
+type ListingActionsProps = { listing: SampleListing; quickPrepField: string; fieldShort: string };
+
+/**
+ * Apply, Save, and the skills fit on the listing page. Signed in: the match
+ * uses the saved profile, Save writes to the quest log, and "Did you apply?"
+ * is checked on the server. Signed out: the quick skill picker and sign-up prompts.
+ */
+export function ListingActions(props: ListingActionsProps) {
+  return (
+    <ToastProvider>
+      <Actions {...props} />
+    </ToastProvider>
+  );
+}
+
+const NETWORK = "Couldn't reach InternQuest. Check your connection and try again.";
+
+function Actions({ listing, quickPrepField, fieldShort }: ListingActionsProps) {
+  const account = useAccountIfAvailable();
+  const toast = useToast();
+  const [entry, setEntry] = useState<LogEntry | null>(() => account?.questLog.find((e) => e.listingId === listing.id) ?? null);
+  const [busy, setBusy] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -89,20 +109,63 @@ export function ListingActions({
   const closed = isClosed(listing);
   const subject = `OJT application: ${listing.title}`;
 
+  // Signed in: the saved profile decides the match. Signed out: the picks in the URL.
+  const who = matchProfile(account, picks);
   const match =
-    picks.skills.length > 0
+    who.skills.length > 0
       ? scoreListing(
           {
-            skills: picks.skills,
-            fields: picks.field ? [picks.field] : [],
-            workType: null,
-            location: picks.city ? { lat: picks.city.lat, lng: picks.city.lng } : null,
+            skills: who.skills,
+            fields: who.field ? [who.field] : [],
+            workType: who.workType,
+            location: who.city ? { lat: who.city.lat, lng: who.city.lng } : null,
             radiusKm: DEFAULT_RADIUS_KM,
           },
           listing,
           canonicalSkill,
         )
       : null;
+
+  /** Member Save: toggles the Saved entry; once applied, it links to the quest log instead. */
+  const save = async () => {
+    if (!account) {
+      setSaveOpen(true);
+      return;
+    }
+    if (entry && entry.status !== "saved") {
+      router.push("/quest-log");
+      return;
+    }
+    if (!LIVE) return;
+    setBusy(true);
+    try {
+      if (entry) {
+        const r = await unsaveListing(listing.id);
+        if (r.ok) setEntry(null);
+        toast(r.ok ? { message: "Removed from saved." } : { tone: "error", message: r.error });
+      } else {
+        const r = await saveListing(listing.id);
+        if (r.ok) setEntry(r.entry);
+        toast(r.ok ? { message: "Saved to your quest log.", tone: "success" } : { tone: "error", message: r.error });
+      }
+    } catch {
+      toast({ tone: "error", message: NETWORK });
+    }
+    setBusy(false);
+  };
+
+  const confirm = async (id: string) => {
+    try {
+      const r = await confirmApplication(id);
+      if (r.ok) setEntry(r.entry);
+      toast(r.ok ? { message: "Marked as applied. It's in your quest log.", tone: "success" } : { tone: "error", message: r.error });
+    } catch {
+      toast({ tone: "error", message: NETWORK });
+    }
+  };
+
+  const saveLabel = !entry ? "Save" : entry.status === "saved" ? "Saved" : `In your quest log: ${STATUS_LABEL[entry.status]}`;
+  const saveIcon = <PixelIcon name={entry ? "check" : "bookmark"} scale={2} />;
 
   const setSkills = (next: string[]) => {
     const q = new URLSearchParams(params.toString());
@@ -179,8 +242,8 @@ export function ListingActions({
       {/* Desktop action card (phones use the sticky bar at the bottom). */}
       <div className="hidden border border-line bg-screen p-5 lg:block">
         <ApplyButton listing={listing} onEmail={() => setEmailOpen(true)} className="w-full" />
-        <Button variant="secondary" block className="mt-2" icon={<PixelIcon name="bookmark" scale={2} />} onClick={() => setSaveOpen(true)}>
-          Save
+        <Button variant="secondary" block className="mt-2" icon={saveIcon} loading={busy} aria-pressed={entry?.status === "saved"} onClick={() => void save()}>
+          {saveLabel}
         </Button>
         <p className="mt-3 text-sm text-muted">
           {closed
@@ -199,10 +262,28 @@ export function ListingActions({
 
       {/* Skills fit */}
       <div className="mt-0 space-y-3 lg:mt-4">
-        {match && !editSkills ? (
+        {account && match ? (
           <>
             <MatchPanel
-              match={toBreakdown(listing, match, picks.city)}
+              match={toBreakdown(listing, match, who.city)}
+              quickPrepHref={`/tips/resume#${listing.field}`}
+              quickPrepField={quickPrepField}
+            />
+            <ButtonLink href="/profile?edit=1" variant="ghost">
+              Not right? Update your skills
+            </ButtonLink>
+          </>
+        ) : account ? (
+          <section className="border border-line bg-screen p-4">
+            <p className="text-base">Add skills to your profile to see how you match.</p>
+            <ButtonLink href="/profile?edit=1" variant="secondary" className="mt-3">
+              Add skills
+            </ButtonLink>
+          </section>
+        ) : match && !editSkills ? (
+          <>
+            <MatchPanel
+              match={toBreakdown(listing, match, who.city)}
               quickPrepHref={`/tips/resume#${listing.field}`}
               quickPrepField={quickPrepField}
             />
@@ -222,8 +303,8 @@ export function ListingActions({
       {/* Phone action bar: replaces the bottom nav on detail pages (decision #29). */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-bezel bg-screen px-gutter pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:hidden">
         <div className="mx-auto flex max-w-xl gap-2">
-          <Button variant="secondary" size="lg" icon={<PixelIcon name="bookmark" scale={2} />} onClick={() => setSaveOpen(true)}>
-            Save
+          <Button variant="secondary" size="lg" icon={saveIcon} loading={busy} aria-pressed={entry?.status === "saved"} onClick={() => void save()}>
+            {entry ? (entry.status === "saved" ? "Saved" : STATUS_LABEL[entry.status]) : "Save"}
           </Button>
           <ApplyButton listing={listing} onEmail={() => setEmailOpen(true)} className="flex-1" />
         </div>
@@ -247,9 +328,23 @@ export function ListingActions({
         startHref={startHref}
         onClose={() => setSaveOpen(false)}
       />
-      <ApplyReturnSheet pending={prompt} onClose={dismiss} viewer="guest" startHref={startHref} />
+      <ApplyReturnSheet
+        pending={prompt}
+        onClose={dismiss}
+        viewer={account ? "member" : "guest"}
+        startHref={startHref}
+        onConfirm={(id) => void confirm(id)}
+      />
     </>
   );
+}
+
+/** Who the match is for: the signed-in profile, or a visitor's picks from the URL. */
+function matchProfile(account: Account | null, picks: ReturnType<typeof readPicks>) {
+  if (account) {
+    return { skills: account.skills, field: account.field, workType: account.workType, city: findCityById(account.cityId) };
+  }
+  return { skills: picks.skills, field: picks.field, workType: null, city: picks.city };
 }
 
 /* ------------------------------------------------------------------------ */

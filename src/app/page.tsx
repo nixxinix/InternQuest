@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { LandingExplorer, LandingExplorerSkeleton } from "@/components/landing/LandingExplorer";
 import { ListingsScope } from "@/components/providers/ListingsScope";
+import { AccountScope } from "@/components/providers/AccountScope";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 
@@ -10,7 +11,7 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
  */
 export default function LandingPage() {
   return (
-    <>
+    <AccountScope>
       <PublicHeader />
       <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-gutter pb-12 pt-5 lg:pt-10">
         <h1 className="max-w-2xl text-2xl font-semibold lg:text-3xl">
@@ -24,6 +25,6 @@ export default function LandingPage() {
         </ListingsScope>
       </main>
       <SiteFooter />
-    </>
+    </AccountScope>
   );
 }

@@ -26,6 +26,10 @@ export const RATE_LIMITS = {
   recoveryCodes: { max: 10, windowSeconds: 60 * 60 },
   /** Map lookups of new places, per user (cached answers don't count). */
   geocode: { max: 20, windowSeconds: 60 * 60 },
+  /** Apply clicks logged from one network (more still redirect, just aren't counted). */
+  click: { max: 120, windowSeconds: 60 * 60 },
+  /** Quest log changes per user: plenty for real use, stops scripted flooding. */
+  questLog: { max: 300, windowSeconds: 10 * 60 },
   /** Nominatim's policy: at most 1 request per second from the whole app. */
   nominatim: { max: 1, windowSeconds: 1 },
 } as const;

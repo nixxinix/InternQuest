@@ -5,7 +5,16 @@ import { useRef, useState, type ReactNode } from "react";
 import { useReward } from "@/components/game/useReward";
 import { AppShell } from "@/components/layout/AppShell";
 import { useFindListing } from "@/components/providers/ListingsProvider";
-import { initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
+import {
+  addExternalApplication,
+  confirmApplication,
+  dismissApplyPrompt,
+  moveApplication,
+  removeApplication,
+  restoreApplication,
+  updateApplicationDetails,
+} from "@/app/actions/questlog";
+import { LIVE, initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
 import { GameModeProvider, useFeatures, useVocab } from "@/components/providers/GameModeProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
@@ -40,8 +49,8 @@ import { AddExternalSheet } from "./AddExternalSheet";
 const isStatus = (s: string | null): s is Status => (STATUSES as readonly string[]).includes(s ?? "");
 
 /**
- * W7 Quest log. Signed in: the real account with an empty log; changes stay
- * on this page until the applications table arrives (Phase 2).
+ * W7 Quest log. Signed in: the real log from the database; every change is
+ * saved by a server action (rolled back with a retry if it fails).
  * Design preview (no Supabase): sample user and log, with review-only switches
  * ?mode=full|light|plain, ?state=new (empty log), ?state=fail (saves fail and roll back).
  */
@@ -56,7 +65,7 @@ export function QuestLogScreen() {
         <QuestLog
           today={today}
           initialViewer={account ? viewerFromAccount(account) : state === "new" ? SAMPLE_NEW_VIEWER : SAMPLE_VIEWER}
-          initialLog={account || state === "new" ? [] : sampleQuestLog(today)}
+          initialLog={account ? account.questLog : state === "new" ? [] : sampleQuestLog(today)}
           failSaves={state === "fail"}
         />
       </ToastProvider>
@@ -64,12 +73,14 @@ export function QuestLogScreen() {
   );
 }
 
-/** TODO(Phase 2): a server action that writes the change and returns the EXP the server granted. */
-function persist(fail: boolean): Promise<void> {
+/** Design preview only: pretends to save (?state=fail makes it fail, to review the rollback). */
+function persist(fail: boolean): Promise<SaveResult> {
   return new Promise((resolve, reject) =>
-    setTimeout(() => (fail ? reject(new Error("Network error")) : resolve()), fail ? 600 : 0),
+    setTimeout(() => (fail ? reject(new Error("Network error")) : resolve({ ok: true })), fail ? 600 : 0),
   );
 }
+
+type SaveResult = { ok: true; entry?: LogEntry } | { ok: false; error: string };
 
 function QuestLog({
   today,
@@ -133,16 +144,37 @@ function QuestLog({
 
   /* ---------------- Saving: optimistic, rolled back with a retry if it fails (W7) ---------------- */
 
-  const commit = (next: LogEntry[], before: LogEntry[], onSaved?: () => void) => {
+  /**
+   * Shows the change right away, then saves it (live: the server action `op`).
+   * If saving fails, the change is undone and the toast offers a retry.
+   */
+  const commit = (
+    next: LogEntry[],
+    before: LogEntry[],
+    onSaved?: (saved?: LogEntry) => void,
+    op?: () => Promise<SaveResult>,
+  ) => {
     setLog(next);
-    persist(failSaves).then(onSaved, () => {
-      setLog(before);
-      toast({
-        tone: "error",
-        message: "We couldn't save that change, so it was undone. Check your connection.",
-        action: { label: "Try again", onClick: () => commit(next, before, onSaved) },
+    const run: Promise<SaveResult> = LIVE && op ? op() : persist(failSaves);
+    run
+      .catch((): SaveResult => ({ ok: false, error: "We couldn't save that change, so it was undone. Check your connection." }))
+      .then((r) => {
+        if (r.ok) {
+          onSaved?.(r.entry);
+          return;
+        }
+        setLog(before);
+        toast({
+          tone: "error",
+          message: r.error.includes("undone") ? r.error : `${r.error} Your change was undone.`,
+          action: { label: "Try again", onClick: () => commit(next, before, onSaved, op) },
+        });
       });
-    });
+  };
+
+  /** Swaps an entry for the version the server saved (real id, server-decided fields). */
+  const replaceEntry = (localId: string, saved?: LogEntry) => {
+    if (saved) setLog((l) => l.map((x) => (x.id === localId ? saved : x)));
   };
 
   const moveMessage = (to: Status, outcome: Outcome | null): string => {
@@ -169,6 +201,7 @@ function QuestLog({
         if (exp) reward(exp.amount, message);
         else toast({ message, tone: "success" });
       },
+      () => moveApplication(id, to, outcome ?? null),
     );
     // Phones: follow the card, so its next step (like interview prep) is right there (SPEC §8).
     if (to !== tab) setTab(to);
@@ -179,14 +212,17 @@ function QuestLog({
     if (!e) return;
     const exp = expForConfirm(e, confirmedToday);
     const done: LogEntry = { ...confirmEntry(e, today), rewarded: exp ? [...e.rewarded, exp.key] : e.rewarded };
+    const listingId = e.listingId;
     commit(
       log.map((x) => (x.id === id ? done : x)),
       log,
-      () => {
+      (saved) => {
+        replaceEntry(id, saved);
         setConfirmedToday((n) => n + 1);
         if (exp) reward(exp.amount, "Marked as applied.");
         else toast({ message: "Marked as applied.", tone: "success" });
       },
+      listingId ? () => confirmApplication(listingId) : undefined,
     );
     setTab("applied");
   };
@@ -196,6 +232,7 @@ function QuestLog({
       log.map((x) => (x.id === id ? { ...x, awaitingConfirm: false } : x)),
       log,
       () => toast({ message: "Okay, it stays in Saved." }),
+      () => dismissApplyPrompt(id),
     );
 
   const update = (id: string, patch: QuestLogPatch) =>
@@ -203,23 +240,41 @@ function QuestLog({
       log.map((x) => (x.id === id ? { ...x, ...patch } : x)),
       log,
       () => toast({ message: "Details saved.", tone: "success" }),
+      () => updateApplicationDetails(id, patch),
     );
 
   const remove = (id: string) => {
     const before = log;
     const after = log.filter((x) => x.id !== id);
-    commit(after, before, () =>
-      toast({
-        message: `Removed from your ${v("tracker").toLowerCase()}.`,
-        action: { label: "Undo", onClick: () => commit(before, after) },
-      }),
+    const removed = log.find((x) => x.id === id);
+    commit(
+      after,
+      before,
+      () =>
+        toast({
+          message: `Removed from your ${v("tracker").toLowerCase()}.`,
+          action: {
+            label: "Undo",
+            onClick: () =>
+              commit(before, after, (saved) => replaceEntry(id, saved), removed ? () => restoreApplication(removed) : undefined),
+          },
+        }),
+      () => removeApplication(id),
     );
   };
 
   const add = (draft: ExternalDraft) => {
-    // Temporary client id; the database assigns the real one in Phase 2.
+    // Temporary id until the server answers with the saved entry.
     const entry = externalEntry(draft, `x-${nextLocalId.current++}`, today);
-    commit([entry, ...log], log, () => toast({ message: `Added to ${STATUS_LABEL[entry.status]}.`, tone: "success" }));
+    commit(
+      [entry, ...log],
+      log,
+      (saved) => {
+        replaceEntry(entry.id, saved);
+        toast({ message: `Added to ${STATUS_LABEL[entry.status]}.`, tone: "success" });
+      },
+      () => addExternalApplication(draft),
+    );
     setTab(entry.status);
   };
 

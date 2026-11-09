@@ -2,6 +2,7 @@
 
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { LevelUpDialog } from "@/components/game/LevelUpDialog";
+import { LIVE } from "@/components/providers/AccountProvider";
 import { useFeatures } from "@/components/providers/GameModeProvider";
 import { useToast } from "@/components/ui/Toast";
 import { applyExp, unlockAt } from "@/lib/game/reward";
@@ -22,6 +23,13 @@ export function useReward<V extends Progress>(viewer: V, setViewer: Dispatch<Set
   const [levelUp, setLevelUp] = useState<number | null>(null);
 
   const reward = (amount: number, message: string, patch?: (v: V) => V) => {
+    if (LIVE) {
+      // Real accounts: EXP is decided on the server only (Phase 3, exp_events). Until then, no
+      // client-side EXP that would vanish on reload; the action's message still shows.
+      if (patch) setViewer((v0) => patch(v0));
+      toast({ message, tone: "success" });
+      return;
+    }
     const next = applyExp(viewer, amount);
     setViewer((v0) => {
       const updated = { ...v0, level: next.level, exp: next.exp, expMax: next.expMax };

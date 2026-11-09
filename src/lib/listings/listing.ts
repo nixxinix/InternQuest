@@ -66,7 +66,8 @@ export function listingFromRow(row: ListingRow, today: string, now: Date): Listi
         : null;
   if (!apply) return null;
 
-  let deadlineInDays = row.deadline ? daysBetween(today, row.deadline) : null;
+  const validDeadline = typeof row.deadline === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.deadline) ? row.deadline : null;
+  let deadlineInDays = validDeadline ? daysBetween(today, validDeadline) : null;
   if (!row.is_active) deadlineInDays = Math.min(deadlineInDays ?? -1, -1);
 
   const lat = row.lat === null ? null : Number(row.lat);

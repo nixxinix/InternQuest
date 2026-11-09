@@ -7,14 +7,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { sendClickBeacon } from "@/components/listing/ListingActions";
 import { ApplyReturnSheet, EmailApplySheet } from "@/components/listing/ListingSheets";
 import { markApplyClicked, usePendingApplyPrompt } from "@/components/listing/usePendingApply";
-import { GameModeProvider, useVocab } from "@/components/providers/GameModeProvider";
+import { GameModeProvider } from "@/components/providers/GameModeProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Checkbox, SelectField } from "@/components/ui/Field";
 import { ListingCard } from "@/components/ui/ListingCard";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { Sheet } from "@/components/ui/Sheet";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { ToastProvider } from "@/components/ui/Toast";
 import { DESKTOP_QUERY, useMediaQuery } from "@/lib/browser/useMediaQuery";
 import { cn } from "@/lib/cn";
 import { findCityById } from "@/lib/catalog/cities";
@@ -44,6 +44,7 @@ import { SAMPLE_VIEWER, type Viewer } from "@/lib/sample/viewer";
 import { viewerFromAccount } from "@/lib/account/account";
 import { useFindListing, useListings } from "@/components/providers/ListingsProvider";
 import { initialModeFor, initialMotionFor, useAppAccount } from "@/components/providers/AccountProvider";
+import { useSaveAndConfirm } from "@/components/questlog/useSaveAndConfirm";
 import { ListingPanel } from "./ListingPanel";
 
 /** URL params that aren't filters but must survive a filter change. */
@@ -77,8 +78,6 @@ function Search({ initial }: { initial: Viewer }) {
   const pathname = usePathname();
   const params = useSearchParams();
   const uid = useId();
-  const v = useVocab();
-  const toast = useToast();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
   const listings = useListings();
@@ -171,21 +170,9 @@ function Search({ initial }: { initial: Viewer }) {
   };
 
   // ---- actions ----
-  const toggleSave = (id: string) => {
-    const before = viewer.saved;
-    const was = before.includes(id);
-    setViewer((v0) => ({ ...v0, saved: was ? v0.saved.filter((s) => s !== id) : [...v0.saved, id] }));
-    toast({
-      message: was ? "Removed from saved." : `Saved to your ${v("tracker").toLowerCase()}.`,
-      action: { label: "Undo", onClick: () => setViewer((v0) => ({ ...v0, saved: before })) },
-    });
-  };
-  const confirmApplied = (id: string) =>
-    reward(20, "Marked as applied.", (v0) => ({
-      ...v0,
-      applied: v0.applied.includes(id) ? v0.applied : [...v0.applied, id],
-      saved: v0.saved.filter((s) => s !== id),
-    }));
+  const quest = useSaveAndConfirm(setViewer, reward);
+  const toggleSave = (id: string) => quest.toggleSave(id, viewer.saved.includes(id));
+  const confirmApplied = (id: string) => void quest.confirmApplied(id);
 
   const emailListing = emailFor ? findListing(emailFor) : null;
   const moreCount = (["field", "posted", "remote"] as FilterKey[]).filter((k) => active.includes(k)).length;

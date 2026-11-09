@@ -40,7 +40,7 @@ export type Viewer = {
   applied: string[];
   /** Apply clicked but not confirmed (USER_FLOWS §3). */
   pendingConfirm: string | null;
-  upcoming: { listingId: string; what: string; when: string; how: string }[];
+  upcoming: { listingId: string; company?: string; what: string; when: string; how: string }[];
 };
 
 export const SAMPLE_VIEWER: Viewer = {

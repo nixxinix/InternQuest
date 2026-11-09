@@ -45,8 +45,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Only pages that read the session. Static files, images, and public pages skip this.
+  // Only pages that read the session. Static files, images, and other public pages skip this.
   matcher: [
+    "/",
+    "/listings/:path*",
     "/home/:path*",
     "/search/:path*",
     "/quest-log/:path*",

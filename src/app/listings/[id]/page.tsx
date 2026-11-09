@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
+import { AccountScope } from "@/components/providers/AccountScope";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import {
   BackLink,
@@ -54,7 +55,8 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
   ];
 
   return (
-    <>
+    // Signed in: the header says "My home" and the match uses the saved profile.
+    <AccountScope>
       <PublicHeader />
       {/* pb-32 on phones leaves room for the sticky Save / Apply bar. */}
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-gutter pb-32 pt-3 lg:pb-12 lg:pt-6">
@@ -142,7 +144,7 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
         </div>
       </main>
       <SiteFooter />
-    </>
+    </AccountScope>
   );
 }
 

@@ -371,3 +371,27 @@ Review-only URL switches:
 **Changed on existing screens:** sign-up step 1 adds the age checkbox (decision #102). Step 2 shows codes only until an email service exists (#104). Settings gains "Log out", and every setting saves to the server with rollback if a save fails. Profile > Edit saves for real. The leaderboard's "Hide me" saves too.
 
 **Not tested end to end yet:** sign-up through to Home, needing migrations 0001 and 0002 plus the seed in the Supabase project (docs/SUPABASE_SETUP.md).
+
+## Phase 1c. Places and listings from the database: 2026-11-09
+
+**End-to-end run (headless Edge, production build, the real Supabase project), all passed:**
+signed-out /home goes to /login; sign-up with a live availability check; 8 recovery codes saved; Light play style saved; profile saved with "Lipa", a town not on our list, found on the map as Lipa, Batangas; Home greets the new user; Profile shows the city; Search shows database listings; Sound switched on stays on after a reload; log out; a wrong password gets the generic message; log in; reset with a recovery code typed in lowercase with a space (7 codes left); delete account, signed out. The test account was removed, with nothing left behind.
+
+**Fixed during the run:** the account read now waits for the request (`connection()`). Supabase's session check reads the clock, which Next.js doesn't allow while it prebuilds a page shell, and the server logged an error on every shell refresh.
+
+**Changed on screens:** the city box says unlisted places can be typed and credits OpenStreetMap (signed in only; the preview still uses the list). Map lookup errors say what to do: "couldn't find", "busy, try again", or "pick from the list".
+
+**Waiting on setup:** migration 0003 (the lookup cache). Until it runs, lookups work but aren't cached, and the server logs a warning.
+
+## Phase 2. Quest log, Apply clicks, and member listing pages: 2026-11-10
+
+| Check | Result |
+| ----- | ------ |
+| Saves for real? | Quest log moves, details, "Not yet", remove (with Undo), and add-from-elsewhere call server actions. If one fails, the change is undone and the toast offers "Try again". |
+| "Did you apply?" | Asked on Home and on the card after an Apply click, on any device, for 14 days. "Yes" is refused, with a reason, if the server has no Apply click on record. |
+| Listing page, signed in | The match uses the saved profile, Save shows "Saved" or "In your quest log: Applied", and the header says "My home". |
+| No game rewards from the client | Real accounts get the plain confirmation toasts; EXP waits for Phase 3 (decision #116). |
+
+**Verified so far (production build, real project):** all Phase 1 steps still pass. The listing page switches to the member view (match "73 km from Lipa" from the saved profile, header "My home").
+
+**Waiting on setup:** migrations 0003 and 0004. Without 0004 the app still works (empty quest log, a server warning), but saving fails with an error toast. The browser test already has the Phase 2 steps (save, Apply click, confirm, quest log, add from elsewhere) and runs once the tables exist.

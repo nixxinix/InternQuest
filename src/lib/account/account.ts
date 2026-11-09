@@ -13,6 +13,8 @@ import { MAX_SKILLS } from "@/lib/listings/picks";
 import { WORK_TYPE_LABEL, type WorkType } from "@/lib/listings/types";
 import { haversineKm } from "@/lib/matching/geo";
 import type { ProfileValues } from "@/lib/profile/validate";
+import type { LogEntry } from "@/lib/tracker/log";
+import { entryFromRow, summarize, type ApplicationRow, type QuestSummary } from "@/lib/tracker/rows";
 import type { Viewer } from "@/lib/sample/viewer";
 import { DEFAULT_SETTINGS, NOTE_TONES, type UserSettings } from "@/lib/settings/settings";
 
@@ -85,6 +87,9 @@ export type Account = {
   settings: UserSettings;
   recovery: RecoveryStatus;
   joinedAt: string;
+  /** The quest log, newest change first. */
+  questLog: LogEntry[];
+  quest: QuestSummary;
 };
 
 const isWorkType = (v: unknown): v is WorkType => typeof v === "string" && v in WORK_TYPE_LABEL;
@@ -129,6 +134,8 @@ export function accountFromRows(
   skills: string[],
   settings: SettingsRow | null | undefined,
   recovery: RecoveryRow | null | undefined,
+  applications: ApplicationRow[] = [],
+  now: Date = new Date(),
 ): Account {
   return {
     id: profile.id,
@@ -144,15 +151,18 @@ export function accountFromRows(
     settings: settingsFromRow(settings),
     recovery: recoveryFromRow(recovery),
     joinedAt: profile.created_at,
+    questLog: applications.map((r) => entryFromRow(r, now)),
+    quest: summarize(applications, now),
   };
 }
 
 /**
- * The shape the app screens use. EXP, levels, streaks, badges, and the quest
- * log arrive in Phases 2 and 3; until then a real account starts like a new
- * player (Level 1, empty quest log, tutorial checklist).
+ * The shape the app screens use, with the quest log's saved, applied,
+ * waiting, and upcoming entries. EXP, levels, streaks, and badges arrive in
+ * Phase 3; until then a real account shows Level 1 and no EXP.
  */
 export function viewerFromAccount(a: Account): Viewer {
+  const fromListings = a.questLog.filter((e) => e.listingId !== null);
   return {
     username: a.username,
     look: a.look,
@@ -168,17 +178,22 @@ export function viewerFromAccount(a: Account): Viewer {
     workType: a.workType,
     status: a.status,
     school: a.school,
-    applicationsTotal: 0,
+    applicationsTotal: a.quest.confirmedCount,
     totalExp: 0,
     badges: [],
     recovery: a.recovery,
     isNew: true,
-    tutorial: { profile: a.onboarded, viewedMatch: false, saved: false, applied: false },
+    tutorial: {
+      profile: a.onboarded,
+      viewedMatch: false,
+      saved: a.questLog.length > 0,
+      applied: a.quest.confirmedCount > 0,
+    },
     weeklyQuest: null,
-    saved: [],
-    applied: [],
-    pendingConfirm: null,
-    upcoming: [],
+    saved: fromListings.filter((e) => e.status === "saved").map((e) => e.listingId as string),
+    applied: fromListings.filter((e) => e.status !== "saved").map((e) => e.listingId as string),
+    pendingConfirm: a.quest.pendingConfirm,
+    upcoming: a.quest.upcoming,
   };
 }
 

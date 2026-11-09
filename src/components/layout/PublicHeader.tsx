@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { HeaderAccountLink, LoginLink } from "./HeaderAccountLink";
 
 /** Logged-out header on the bezel. No game elements: visitors haven't chosen a play style. */
 export function PublicHeader({ skipTo = "main" }: { skipTo?: string }) {
@@ -21,12 +23,9 @@ export function PublicHeader({ skipTo = "main" }: { skipTo?: string }) {
           >
             For companies
           </Link>
-          <Link
-            href="/login"
-            className="inline-flex min-h-tap items-center border-2 border-bezel-text px-4 font-semibold text-screen hover:border-lime"
-          >
-            Log in
-          </Link>
+          <Suspense fallback={<LoginLink />}>
+            <HeaderAccountLink />
+          </Suspense>
         </nav>
       </div>
     </header>
