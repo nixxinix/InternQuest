@@ -1,0 +1,215 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   INTERNQUEST design tokens: Direction B "Pocket Console".
+
+   This file is the Tailwind config (Tailwind v4 is configured in CSS).
+   Every color, font, type size, border, shadow, and motion value is defined
+   here ONCE. Components only use the generated utilities
+   (bg-bezel, text-ink, font-pixel, shadow-raised, ...) or these variables.
+
+   Contrast rules are enforced by tests/tokens.contrast.test.ts, which reads
+   this file. If you change a color, run `npm test`.
+   ========================================================================== */
+
+/* --- Game mode variants -------------------------------------------------
+   <html data-mode="full|light|plain"> is set by GameModeProvider.
+   Usage: `mode-plain:hidden`, `hidden mode-full:flex`, `mode-game:block`.
+   "game" means Full Quest or Light (any mode that shows EXP).             */
+@custom-variant mode-full (&:where([data-mode="full"], [data-mode="full"] *));
+@custom-variant mode-light (&:where([data-mode="light"], [data-mode="light"] *));
+@custom-variant mode-plain (&:where([data-mode="plain"], [data-mode="plain"] *));
+@custom-variant mode-game (&:where([data-mode="full"], [data-mode="full"] *, [data-mode="light"], [data-mode="light"] *));
+
+@theme static {
+  /* ---- Color: 8 core tokens ------------------------------------------- */
+  --color-*: initial;
+  --color-bezel: #16202a;  /* dark console frame: header, nav, game panels */
+  --color-canvas: #eef2f0; /* page background */
+  --color-screen: #ffffff; /* cards, sheets, inputs */
+  --color-ink: #121a21;    /* body text */
+  --color-muted: #52606b;  /* secondary text, input borders */
+  --color-lime: #a6f05a;   /* THE accent. Only on bezel. Never on light surfaces. */
+  --color-green: #0b6e42;  /* actions, links, matched skills on light surfaces */
+  --color-alert: #c2412d;  /* deadlines, errors, destructive actions */
+
+  /* ---- Color: derived state shades (same hues, not new colors) -------- */
+  --color-bezel-raised: #243241; /* panels sitting on the bezel */
+  --color-bezel-text: #c9d3ce;   /* secondary text on bezel */
+  --color-bezel-track: #33424f;  /* empty segments on bezel (always paired with a text value) */
+  --color-green-press: #085234;  /* pressed/hover primary button */
+  --color-green-tint: #e3f1e9;   /* matched chip, success toast background */
+  --color-alert-tint: #fdf0ed;   /* error panel background */
+  --color-line: #cbd5d0;         /* decorative dividers ONLY (1.5:1, never a control border) */
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* ---- Type ----------------------------------------------------------- */
+  /* --font-inter and --font-silkscreen come from next/font in layout.tsx */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: var(--font-silkscreen), ui-monospace, monospace;
+
+  /* Reading scale (Inter). Body copy is never below 16px. */
+  --text-xs: 0.75rem;     --text-xs--line-height: 1rem;      /* 12/16 meta only */
+  --text-sm: 0.875rem;    --text-sm--line-height: 1.25rem;   /* 14/20 chips, captions */
+  --text-base: 1rem;      --text-base--line-height: 1.5rem;  /* 16/24 body */
+  --text-lg: 1.125rem;    --text-lg--line-height: 1.625rem;  /* 18/26 card titles */
+  --text-xl: 1.25rem;     --text-xl--line-height: 1.75rem;   /* 20/28 section headings */
+  --text-2xl: 1.5rem;     --text-2xl--line-height: 2rem;     /* 24/32 page titles */
+  --text-3xl: 1.875rem;   --text-3xl--line-height: 2.25rem;  /* 30/36 desktop page titles */
+
+  /* HUD scale (Silkscreen). Short labels and numbers only, always uppercase. */
+  --text-hud-sm: 0.75rem; --text-hud-sm--line-height: 1rem;  /* 12: EXP numbers, tags */
+  --text-hud: 1rem;       --text-hud--line-height: 1.25rem;  /* 16: level, panel labels */
+  --text-hud-lg: 1.5rem;  --text-hud-lg--line-height: 1.75rem;
+  --text-hud-xl: 2.5rem;  --text-hud-xl--line-height: 2.75rem; /* level-up number */
+
+  /* ---- Spacing (Tailwind's 4px scale, plus two layout names) ----------- */
+  --spacing-gutter: 1rem;   /* page side padding on mobile */
+  --spacing-section: 1.5rem;
+  --spacing-tap: 2.75rem;   /* 44px minimum touch target: min-h-tap, size-tap */
+
+  /* ---- Shape: square corners only. Stepped corners come from .px-frame. */
+  --radius-*: initial;
+
+  /* ---- Shadows: hard, no blur ---------------------------------------- */
+  --shadow-*: initial;
+  --shadow-raised: 4px 4px 0 0 rgb(18 26 33 / 0.9);  /* sheets, dialogs, level-up card */
+  --shadow-bevel: inset 0 -4px 0 0 rgb(0 0 0 / 0.28); /* console button bottom edge */
+  --shadow-bevel-pressed: inset 0 2px 0 0 rgb(0 0 0 / 0.28);
+
+  /* ---- Motion ---------------------------------------------------------- */
+  --ease-snap: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-pixel: steps(6, end);
+  --motion-instant: 80ms;
+  --motion-fast: 150ms;   /* presses, chip toggles */
+  --motion-base: 240ms;   /* sheets, toasts */
+  --motion-reward: 600ms; /* EXP count-up and bar fill */
+  --motion-max: 900ms;    /* ceiling for any reward animation (SPEC: under ~1s) */
+
+  --animate-pop: pop var(--motion-base) var(--ease-snap) both;
+  --animate-rise: rise var(--motion-base) var(--ease-snap) both;
+  --animate-shimmer: shimmer 1.2s steps(6, end) infinite;
+  --animate-flicker: flicker 0.6s steps(2, end) 2;
+
+  @keyframes pop {
+    0% { transform: scale(0.9); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes rise {
+    0% { transform: translateY(12px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes shimmer {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  @keyframes flicker {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+  }
+}
+
+/* --- Pixel layer utilities ------------------------------------------------ */
+
+/* Stepped-corner 2px frame. Color via --frame (default ink).
+   Needs 2px of free space around the element (it draws outside the box). */
+@utility px-frame {
+  box-shadow:
+    0 -2px 0 0 var(--frame, var(--color-ink)),
+    0 2px 0 0 var(--frame, var(--color-ink)),
+    -2px 0 0 0 var(--frame, var(--color-ink)),
+    2px 0 0 0 var(--frame, var(--color-ink));
+}
+
+/* Stepped frame plus a hard drop shadow: dialogs and the level-up card. */
+@utility px-frame-raised {
+  box-shadow:
+    0 -2px 0 0 var(--frame, var(--color-ink)),
+    0 2px 0 0 var(--frame, var(--color-ink)),
+    -2px 0 0 0 var(--frame, var(--color-ink)),
+    2px 0 0 0 var(--frame, var(--color-ink)),
+    6px 6px 0 0 rgb(18 26 33 / 0.9);
+}
+
+/* Dark console zone: sets colors and switches the focus ring to lime. */
+@utility on-bezel {
+  background-color: var(--color-bezel);
+  color: var(--color-screen);
+  --focus: var(--color-lime);
+}
+
+/* Makes a link inside a positioned card cover the whole card. */
+@utility stretched-link {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+}
+
+@utility pixelated {
+  image-rendering: pixelated;
+}
+
+/* --- Base ---------------------------------------------------------------- */
+@layer base {
+  html {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--color-canvas);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--focus, var(--color-ink));
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-lime);
+    color: var(--color-ink);
+  }
+
+  /* Native dialog backdrop for sheets and the level-up card */
+  dialog::backdrop {
+    background-color: rgb(18 26 33 / 0.6);
+  }
+}
+
+/* --- Reduced motion -------------------------------------------------------
+   Two sources: the OS setting, and the in-app "Animations" toggle, which
+   sets <html data-motion="reduce">. Both remove movement everywhere.        */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+[data-motion="reduce"] *,
+[data-motion="reduce"] *::before,
+[data-motion="reduce"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Print: tips checklists print clean, without the console frame. */
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: #fff; }
+  /* The app frame becomes one plain column on paper. */
+  [data-shell] { display: block !important; }
+  /* "Print checklist": only the title and the checklist, not the whole guide. */
+  html[data-print="checklist"] [data-guide-body] > :not([data-print-keep]) { display: none !important; }
+}

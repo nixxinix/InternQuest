@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="t d">
+  <title id="t">InternQuest</title>
+  <desc id="d">A pocket-console style banner: InternQuest, level up your internship hunt, with an EXP bar at 60 percent.</desc>
+  <rect width="1280" height="360" fill="#16202a"/>
+  <!-- stepped pixel frame -->
+  <path d="M16 8h1248v8h8v328h-8v8H16v-8H8V16h8z" fill="none" stroke="#33424f" stroke-width="4"/>
+  <!-- title -->
+  <text x="72" y="150" font-family="'Courier New', Courier, monospace" font-size="84" font-weight="700" fill="#a6f05a" letter-spacing="2">INTERNQUEST</text>
+  <text x="76" y="200" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="30" fill="#c9d3ce">Find an internship near you. Level up while you do it.</text>
+  <!-- HUD: level + EXP bar (always paired with a text value) -->
+  <text x="76" y="276" font-family="'Courier New', Courier, monospace" font-size="24" font-weight="700" fill="#a6f05a">LV 3</text>
+  <rect x="160" y="252" width="560" height="32" fill="#33424f"/>
+  <rect x="160" y="252" width="336" height="32" fill="#a6f05a"/>
+  <g fill="#16202a">
+    <rect x="216" y="252" width="4" height="32"/><rect x="272" y="252" width="4" height="32"/>
+    <rect x="328" y="252" width="4" height="32"/><rect x="384" y="252" width="4" height="32"/>
+    <rect x="440" y="252" width="4" height="32"/>
+  </g>
+  <text x="740" y="276" font-family="'Courier New', Courier, monospace" font-size="24" fill="#c9d3ce">180 / 300 EXP</text>
+  <!-- pixel sprite: quest scroll / map pin, 16px grid scaled x12 -->
+  <g transform="translate(1000 60)" shape-rendering="crispEdges">
+    <rect x="48" y="0" width="72" height="12" fill="#a6f05a"/>
+    <rect x="36" y="12" width="12" height="12" fill="#a6f05a"/><rect x="120" y="12" width="12" height="12" fill="#a6f05a"/>
+    <rect x="24" y="24" width="12" height="48" fill="#a6f05a"/><rect x="132" y="24" width="12" height="48" fill="#a6f05a"/>
+    <rect x="36" y="24" width="96" height="48" fill="#243241"/>
+    <rect x="72" y="36" width="24" height="24" fill="#a6f05a"/>
+    <rect x="36" y="72" width="12" height="12" fill="#a6f05a"/><rect x="120" y="72" width="12" height="12" fill="#a6f05a"/>
+    <rect x="48" y="84" width="12" height="12" fill="#a6f05a"/><rect x="108" y="84" width="12" height="12" fill="#a6f05a"/>
+    <rect x="60" y="96" width="12" height="12" fill="#a6f05a"/><rect x="96" y="96" width="12" height="12" fill="#a6f05a"/>
+    <rect x="72" y="108" width="24" height="12" fill="#a6f05a"/>
+  </g>
+</svg>
