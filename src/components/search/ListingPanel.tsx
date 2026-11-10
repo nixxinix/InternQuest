@@ -129,7 +129,7 @@ export function ListingPanel({ listing, match, city, saved, onToggleSave, onFini
           Real internships never ask you to pay.
         </p>
         <div className="mt-1">
-          <ReportButton listingTitle={listing.title} />
+          <ReportButton listingId={listing.id} listingTitle={listing.title} />
         </div>
       </aside>
     </article>

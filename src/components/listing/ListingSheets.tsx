@@ -1,6 +1,8 @@
 "use client";
 
 import { useId, useState } from "react";
+import { reportListing } from "@/app/actions/report";
+import { LIVE } from "@/components/providers/AccountProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { Sheet } from "@/components/ui/Sheet";
@@ -163,17 +165,19 @@ const REPORT_REASONS = [
   { id: "other", label: "Something else" },
 ] as const;
 
-type ReportSheetProps = { open: boolean; onClose: () => void; listingTitle: string };
+type ReportSheetProps = { open: boolean; onClose: () => void; listingId: string; listingTitle: string };
 
 /**
- * TODO(Phase 6): POST to the reports endpoint (rate-limited), which feeds
- * the admin queue. Until then the form is complete but nothing is stored.
+ * Sends to the reports table (rate-limited server action), which feeds the
+ * admin queue. Works signed in or as a guest; reporters are never shown to
+ * the company or to admin.
  */
-export function ReportSheet({ open, onClose, listingTitle }: ReportSheetProps) {
+export function ReportSheet({ open, onClose, listingId, listingTitle }: ReportSheetProps) {
   const uid = useId();
   const [reason, setReason] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const close = () => {
@@ -184,13 +188,25 @@ export function ReportSheet({ open, onClose, listingTitle }: ReportSheetProps) {
     onClose();
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!reason) {
       setError("Pick the reason that fits best.");
       return;
     }
     if (reason === "other" && !note.trim()) {
       setError("Tell us a little about what's wrong.");
+      return;
+    }
+    if (!LIVE) {
+      setSent(true);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const res = await reportListing(listingId, reason, note).catch(() => ({ ok: false as const, error: "Couldn't reach InternQuest. Check your connection and try again." }));
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
       return;
     }
     setSent(true);
@@ -217,7 +233,7 @@ export function ReportSheet({ open, onClose, listingTitle }: ReportSheetProps) {
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            submit();
+            void submit();
           }}
         >
           <fieldset aria-describedby={error ? `${uid}-err` : undefined}>
@@ -262,7 +278,7 @@ export function ReportSheet({ open, onClose, listingTitle }: ReportSheetProps) {
               {error}
             </p>
           )}
-          <Button type="submit" block className="mt-4">
+          <Button type="submit" block className="mt-4" loading={busy}>
             Send report
           </Button>
         </form>

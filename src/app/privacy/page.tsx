@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "What InternQuest keeps, why, for how long, and your rights under the Data Privacy Act.",
 };
 
-const UPDATED = "November 9, 2026";
+const UPDATED = "November 10, 2026";
 
 /**
  * W12 Privacy notice (SPEC §4, Data Privacy Act of 2012). Public, no game
@@ -42,7 +42,7 @@ const KEEP: { what: string; why: string; howLong: string }[] = [
   { what: "EXP, levels, badges, streaks, and leaderboard rows", why: "The game layer, if you use it", howLong: "Until you delete your account" },
   {
     what: "Notes on unusual activity, such as many confirmed applications within an hour",
-    why: "To keep the game fair. An admin looks; nothing is taken away automatically.",
+    why: "To keep the game fair. An admin looks; nothing is taken away automatically. If the activity wasn't real, the admin may remove the EXP from that hour or suspend the account.",
     howLong: "[Until reviewed, plus a set period]",
   },
   { what: "Your settings", why: "To remember how you like the app", howLong: "Until you delete your account" },
@@ -61,7 +61,21 @@ const KEEP: { what: string; why: string; howLong: string }[] = [
     why: "To ask “Did you apply?” and check EXP isn't faked. Companies see only totals, never who.",
     howLong: "[12 months], then deleted. Unlinked from you if you delete your account.",
   },
-  { what: "Reports you send about listings", why: "To review and remove unsafe listings", howLong: "[Until reviewed, plus a set period]" },
+  {
+    what: "Reports you send about listings: the reason, your note if you add one, and your account if you're signed in",
+    why: "To review and remove unsafe listings. The company never sees who reported.",
+    howLong: "[Until reviewed, plus a set period]. Unlinked from you if you delete your account.",
+  },
+  {
+    what: "A log of admin decisions (what was decided about which company, listing, or account, and why)",
+    why: "So every removal or suspension can be explained and checked",
+    howLong: "[A set period]",
+  },
+  {
+    what: "Company accounts: the company's name, website, and registration number, and the representative's work email and role",
+    why: "To check a company is real before its listings go live",
+    howLong: "Until the company deletes its account. Its published listings are then closed, not removed.",
+  },
 ];
 
 const SECTIONS = [
@@ -187,7 +201,7 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                   <span className="font-semibold">The InternQuest admin</span> can see account data when needed to keep the
-                  site safe, for example to review a report.
+                  site safe, for example to review a report. Every admin decision is logged with its reason.
                 </li>
                 <li>
                   <span className="font-semibold">A share card</span> shows only what you pick, and only when you share it.
@@ -212,6 +226,10 @@ export default function PrivacyPage() {
                 <li>
                   <span className="font-semibold">A map service</span> (OpenStreetMap&apos;s Nominatim): turns a typed city
                   name into a location.
+                </li>
+                <li>
+                  <span className="font-semibold">An email service</span> (optional, Resend): sends a company its email
+                  confirmation link. It receives only that address and the message.
                 </li>
                 <li>
                   <span className="font-semibold">The AI helper</span> (optional, Anthropic&apos;s Claude): only if you use

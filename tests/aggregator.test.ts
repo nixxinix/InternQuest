@@ -160,6 +160,18 @@ describe("refresh plan (dedupe across sources)", () => {
     expect(plan).toMatchObject({ insert: [], update: [], skipped: { directWins: 1 } });
   });
 
+  it("doesn't revive our own copy once a company has published the same job (the copy was superseded)", () => {
+    const fresh = incoming({});
+    const plan = planImport(
+      [fresh],
+      [
+        { id: "old-id", source: "jsearch", source_ref: fresh.sourceRef, dedupe_key: "superseded:old-id" },
+        { id: "d-4444-abcd", source: "direct", source_ref: null, dedupe_key: fresh.dedupeKey },
+      ],
+    );
+    expect(plan).toMatchObject({ insert: [], update: [], skipped: { directWins: 1 } });
+  });
+
   it("keeps the first of two copies in one batch", () => {
     const a = incoming({});
     const b = incoming({ sourceRef: "other", id: "js-copy-123456" });

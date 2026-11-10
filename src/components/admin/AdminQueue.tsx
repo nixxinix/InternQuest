@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { decideQueueItem, markCompanyEmailConfirmed, recheckWebsite } from "@/app/actions/admin";
 import { BusinessHeader, HEADER_LINK } from "@/components/layout/BusinessHeader";
 import { Button } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
@@ -11,11 +12,8 @@ import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import {
   ACTIONS,
-  DecisionError,
   REPORT_REASON_LABEL,
-  decide,
   isAutoHidden,
-  nextItem,
   reportCount,
   subjectOf,
   type AuditEntry,
@@ -24,37 +22,43 @@ import {
 } from "@/lib/admin/queue";
 import { domainMatchesWebsite, websiteHost } from "@/lib/company/email";
 import { useMediaQuery, DESKTOP_QUERY } from "@/lib/browser/useMediaQuery";
-import { SAMPLE_QUEUE } from "@/lib/sample/company";
 
 const TABS: { kind: QueueKind; label: string }[] = [
   { kind: "company", label: "Companies" },
   { kind: "report", label: "Reports" },
   { kind: "flag", label: "Flagged" },
 ];
-const ADMIN = "owner"; // Phase 6: the signed-in admin's username
 
 /**
  * W14 admin queue (USER_FLOWS §8). One screen, one decision. No game elements.
- * DESIGN PREVIEW with sample items. TODO(Phase 6): this route must sit behind
- * an admin role check (middleware plus RLS), and every action is a server
- * action that writes to admin_audit.
+ * This route sits behind an admin role check (src/lib/admin/server.ts); every
+ * decision is a server action that re-validates the real row and writes to
+ * admin_audit.
  */
-export function AdminQueue() {
+export function AdminQueue({
+  initialItems,
+  initialAudit,
+  adminLabel,
+}: {
+  initialItems: QueueItem[];
+  initialAudit: AuditEntry[];
+  adminLabel: string;
+}) {
   return (
     <ToastProvider>
-      <Queue />
+      <Queue initialItems={initialItems} initialAudit={initialAudit} adminLabel={adminLabel} />
     </ToastProvider>
   );
 }
 
-function Queue() {
+function Queue({ initialItems, initialAudit, adminLabel }: { initialItems: QueueItem[]; initialAudit: AuditEntry[]; adminLabel: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const toast = useToast();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
-  const [queue, setQueue] = useState<QueueItem[]>(SAMPLE_QUEUE);
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [queue, setQueue] = useState<QueueItem[]>(initialItems);
+  const [audit, setAudit] = useState<AuditEntry[]>(initialAudit);
   const [auditOpen, setAuditOpen] = useState(false);
   const detailHeading = useRef<HTMLHeadingElement>(null);
 
@@ -80,18 +84,45 @@ function Queue() {
     if (open && itemParam) detailHeading.current?.focus({ preventScroll: !isDesktop });
   }, [open, itemParam, isDesktop]);
 
-  const onDecide = (item: QueueItem, actionId: string, reason: string) => {
-    try {
-      const index = items.findIndex((q) => q.id === item.id);
-      const result = decide(queue, item.id, actionId, reason, ADMIN, new Date());
-      setQueue(result.queue);
-      setAudit((a) => [result.entry, ...a]);
-      toast({ tone: "success", message: `${result.entry.action}: ${result.entry.subject}. Logged with your reason.` });
-      const next = nextItem(result.queue, item.kind, index);
-      go({ item: next?.id ?? null });
-    } catch (e) {
-      toast({ tone: "error", message: e instanceof DecisionError ? e.message : "That didn't save. Try again." });
+  const onDecide = async (item: QueueItem, actionId: string, reason: string) => {
+    const index = items.findIndex((q) => q.id === item.id);
+    const res = await decideQueueItem(item.kind, item.id, actionId, reason).catch(() => ({ ok: false as const, error: "Couldn't reach InternQuest. Check your connection and try again." }));
+    if (!res.ok) {
+      toast({ tone: "error", message: res.error });
+      return;
     }
+    const action = ACTIONS[item.kind].find((a) => a.id === actionId);
+    const nextQueue = queue.filter((q) => q.id !== item.id);
+    setQueue(nextQueue);
+    setAudit((a) => [{ at: new Date().toISOString(), admin: adminLabel, kind: item.kind, itemId: item.id, subject: subjectOf(item), action: action?.label ?? actionId, reason }, ...a]);
+    toast({ tone: "success", message: `${action?.label ?? "Done"}: ${subjectOf(item)}. Logged with your reason.` });
+    const sameKind = nextQueue.filter((q) => q.kind === item.kind);
+    const next = sameKind[Math.min(index, sameKind.length - 1)] ?? null;
+    go({ item: next?.id ?? null });
+  };
+
+  const onRecheck = async (companyId: string) => {
+    const res = await recheckWebsite(companyId).catch(() => ({ ok: false as const, error: "Couldn't reach InternQuest." }));
+    if (!res.ok) {
+      toast({ tone: "error", message: res.error });
+      return;
+    }
+    setQueue((q) => q.map((it) => (it.kind === "company" && it.id === companyId ? { ...it, websiteLoads: res.loads } : it)));
+    toast({ message: res.loads ? "The website loaded." : "The website still didn't load." });
+  };
+
+  const onConfirmEmail = async (item: QueueItem) => {
+    const res = await markCompanyEmailConfirmed(item.id).catch(() => ({ ok: false as const, error: "Couldn't reach InternQuest." }));
+    if (!res.ok) {
+      toast({ tone: "error", message: res.error });
+      return;
+    }
+    setQueue((q) => q.map((it) => (it.kind === "company" && it.id === item.id ? { ...it, emailConfirmed: true } : it)));
+    setAudit((a) => [
+      { at: new Date().toISOString(), admin: adminLabel, kind: "company", itemId: item.id, subject: subjectOf(item), action: "Marked email confirmed", reason: "Checked by hand" },
+      ...a,
+    ]);
+    toast({ tone: "success", message: "Email marked as confirmed. Logged." });
   };
 
   const list = (
@@ -142,10 +173,6 @@ function Queue() {
         </Link>
       </BusinessHeader>
       <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-gutter pb-16 pt-4 lg:pt-6">
-        <p className="mb-4 border-l-4 border-ink bg-screen px-3 py-2 text-sm">
-          <span className="font-semibold">Design preview with sample data.</span> Phase 6 puts this page behind an admin login.
-        </p>
-
         {/* Phone: an open item replaces the list, with a back link. */}
         {!isDesktop && open ? (
           <>
@@ -157,8 +184,8 @@ function Queue() {
               <PixelIcon name="chevronRight" scale={2} className="rotate-180" />
               Back to the list
             </button>
-            <Detail key={open.id} item={open} onDecide={onDecide} headingRef={detailHeading} />
-          </>
+            <Detail key={open.id} item={open} onDecide={onDecide} onRecheck={onRecheck} onConfirmEmail={onConfirmEmail} headingRef={detailHeading} />
+</>
         ) : (
           <>
             <nav aria-label="Queues" className="flex border-b-2 border-bezel">
@@ -184,7 +211,9 @@ function Queue() {
             </nav>
             <div className="mt-4 lg:grid lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start lg:gap-8">
               {list}
-              {isDesktop && open && <Detail key={open.id} item={open} onDecide={onDecide} headingRef={detailHeading} />}
+              {isDesktop && open && (
+                <Detail key={open.id} item={open} onDecide={onDecide} onRecheck={onRecheck} onConfirmEmail={onConfirmEmail} headingRef={detailHeading} />
+              )}
             </div>
           </>
         )}
@@ -192,7 +221,7 @@ function Queue() {
 
       <Sheet open={auditOpen} onClose={() => setAuditOpen(false)} title="Audit log" description="Every decision, with who made it and why.">
         {audit.length === 0 ? (
-          <p className="text-base text-muted">No decisions yet in this session.</p>
+          <p className="text-base text-muted">No decisions yet.</p>
         ) : (
           <ol className="max-h-[60dvh] divide-y divide-line overflow-y-auto">
             {audit.map((a) => (
@@ -231,12 +260,18 @@ function listLine(it: QueueItem): string {
 function Detail({
   item,
   onDecide,
+  onRecheck,
+  onConfirmEmail,
   headingRef,
 }: {
   item: QueueItem;
-  onDecide: (item: QueueItem, actionId: string, reason: string) => void;
+  onDecide: (item: QueueItem, actionId: string, reason: string) => Promise<void>;
+  onRecheck: (companyId: string) => Promise<void>;
+  onConfirmEmail: (item: QueueItem) => Promise<void>;
   headingRef: React.Ref<HTMLHeadingElement>;
 }) {
+  const [rechecking, setRechecking] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   return (
     <section aria-labelledby="detail-h" className="mt-4 border border-line bg-screen p-5 lg:mt-0">
       <h2 id="detail-h" ref={headingRef} tabIndex={-1} className="text-2xl font-semibold focus:outline-none">
@@ -255,6 +290,32 @@ function Detail({
             <Check ok={item.websiteLoads} yes="Website loads" no="Website didn't load" />
             <Check ok={item.registrationNo !== null} yes={`DTI/SEC: ${item.registrationNo}`} no="No DTI/SEC number given" neutral />
           </ul>
+          <Button
+            variant="ghost"
+            className="mt-2"
+            loading={rechecking}
+            onClick={async () => {
+              setRechecking(true);
+              await onRecheck(item.id);
+              setRechecking(false);
+            }}
+          >
+            Recheck website
+          </Button>
+          {!item.emailConfirmed && (
+            <Button
+              variant="ghost"
+              className="mt-2"
+              loading={confirming}
+              onClick={async () => {
+                setConfirming(true);
+                await onConfirmEmail(item);
+                setConfirming(false);
+              }}
+            >
+              I checked the email another way
+            </Button>
+          )}
           <p className="mt-4 text-base">
             Draft listings waiting: <span className="font-semibold">{item.draftListings}</span>
           </p>
@@ -332,10 +393,11 @@ function Check({ ok, yes, no, neutral }: { ok: boolean; yes: string; no: string;
 }
 
 /** Pick an action, pick a reason, confirm. Two taps plus a confirm, always with a reason. */
-function Decision({ item, onDecide }: { item: QueueItem; onDecide: (item: QueueItem, actionId: string, reason: string) => void }) {
+function Decision({ item, onDecide }: { item: QueueItem; onDecide: (item: QueueItem, actionId: string, reason: string) => Promise<void> }) {
   const actions = ACTIONS[item.kind];
   const [actionId, setActionId] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const action = actions.find((a) => a.id === actionId) ?? null;
 
   return (
@@ -371,7 +433,13 @@ function Decision({ item, onDecide }: { item: QueueItem; onDecide: (item: QueueI
             className="mt-3"
             variant={action.tone === "danger" ? "danger" : "primary"}
             disabled={!reason}
-            onClick={() => reason && onDecide(item, action.id, reason)}
+            loading={busy}
+            onClick={async () => {
+              if (!reason) return;
+              setBusy(true);
+              await onDecide(item, action.id, reason);
+              setBusy(false);
+            }}
           >
             {action.label}: {subjectOf(item)}
           </Button>

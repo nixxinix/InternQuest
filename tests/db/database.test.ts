@@ -671,6 +671,98 @@ describe("daily refresh: expiry, one row per posting, import log", () => {
   });
 });
 
+describe("companies, drafts, admins, and reports (Phase 6)", () => {
+  const C = "44444444-4444-4444-8444-444444444444";
+
+  beforeEach(async () => {
+    await wipeProfiles();
+    await db.query("insert into auth.users (id, email) values ($1, 'hr@tanglaw.example.com') on conflict do nothing", [C]);
+    await asService();
+    await db.exec("delete from public.companies");
+    await db.exec("delete from public.admins");
+    await db.exec("delete from public.admin_audit");
+    await db.exec("delete from public.reports");
+    await db.exec("delete from public.internships where id like 't6-%'");
+    await db.query(
+      "insert into public.companies (id, name, website, work_email, role) values ($1, 'Tanglaw Solar', 'https://tanglaw.example.com', 'hr@tanglaw.example.com', 'HR Officer')",
+      [C],
+    );
+  });
+
+  it("a company reads only its own row, and can't write it directly (name, status, anything)", async () => {
+    await asUser(C);
+    expect(await rows("select name from public.companies")).toEqual([{ name: "Tanglaw Solar" }]);
+    await expect(db.query("update public.companies set name = 'Someone Else Inc' where id = $1", [C])).rejects.toThrow(/permission denied/);
+    await expect(db.query("update public.companies set status = 'approved' where id = $1", [C])).rejects.toThrow(/permission denied/);
+    await asAnon();
+    await expect(db.query("select * from public.companies")).resolves.toMatchObject({ rows: [] });
+  });
+
+  it("a draft is never publicly visible, but a published or closed listing is", async () => {
+    await asService();
+    const base = `insert into public.internships (id, company_id, company_name, source, status, title, dedupe_key) values ($1, $2, 'Tanglaw Solar', 'direct', $3, 'Firmware Intern', $1)`;
+    await db.query(base, ["t6-draft", C, "draft"]);
+    await db.query(base, ["t6-closed", C, "closed"]);
+    await db.query(
+      `insert into public.internships (id, company_id, company_name, source, status, title, field_id, area, work_type, snippet, apply_kind, apply_url, dedupe_key)
+       values ('t6-live', $1, 'Tanglaw Solar', 'direct', 'published', 'Firmware Intern', 'iot', 'Cubao', 'onsite', 'x', 'link', 'https://tanglaw.example.com/apply', 't6-live')`,
+      [C],
+    );
+    await asAnon();
+    const visible = (await rows<{ id: string }>("select id from public.internships where id like 't6-%' order by id")).map((r) => r.id);
+    expect(visible).toEqual(["t6-closed", "t6-live"]);
+  });
+
+  it("a draft needs only a title; publishing needs the rest (listing_published_complete)", async () => {
+    await asService();
+    await db.query(
+      "insert into public.internships (id, company_id, company_name, source, status, title, dedupe_key) values ('t6-min', $1, 'Tanglaw Solar', 'direct', 'draft', 'Firmware Intern', 't6-min')",
+      [C],
+    );
+    await expect(db.query("update public.internships set status = 'published' where id = 't6-min'")).rejects.toThrow(/listing_published_complete/);
+    await db.query(
+      `update public.internships set field_id = 'iot', area = 'Cubao', work_type = 'onsite', snippet = 'x', apply_kind = 'link', apply_url = 'https://tanglaw.example.com/apply', verified = true
+       where id = 't6-min'`,
+    );
+    await expect(db.query("update public.internships set status = 'published' where id = 't6-min'")).resolves.toBeDefined();
+  });
+
+  it("allows apply_kind to be null (a draft with no apply method yet)", async () => {
+    await asService();
+    await expect(
+      db.query(
+        "insert into public.internships (id, company_id, company_name, source, status, title, dedupe_key) values ('t6-noapply', $1, 'Tanglaw Solar', 'direct', 'draft', 'Firmware Intern', 't6-noapply')",
+        [C],
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("admins, admin_audit, and reports are server only", async () => {
+    for (const as of [asAnon, () => asUser(C)]) {
+      await as();
+      await expect(db.query("select * from public.admins")).rejects.toThrow(/permission denied/);
+      await expect(db.query("select * from public.admin_audit")).rejects.toThrow(/permission denied/);
+      await expect(db.query("select * from public.reports")).rejects.toThrow(/permission denied/);
+      await expect(db.query("insert into public.reports (internship_id, reason) values ('x', 'payment')")).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it("deleting a company's auth user removes the company row and unlinks (not deletes) its listings", async () => {
+    await asService();
+    await db.query(
+      "insert into public.internships (id, company_id, company_name, source, status, title, dedupe_key) values ('t6-orphan', $1, 'Tanglaw Solar', 'direct', 'draft', 'Firmware Intern', 't6-orphan')",
+      [C],
+    );
+    await asAdmin();
+    await db.query("delete from auth.users where id = $1", [C]);
+    expect(await rows("select count(*)::int as n from public.companies where id = $1", [C])).toEqual([{ n: 0 }]);
+    const [listing] = await rows<{ company_id: string | null; title: string }>("select company_id, title from public.internships where id = 't6-orphan'");
+    expect(listing).toEqual({ company_id: null, title: "Firmware Intern" });
+    await db.exec("delete from public.internships where id = 't6-orphan'");
+    await db.query("insert into auth.users (id, email) values ($1, 'hr@tanglaw.example.com')", [C]);
+  });
+});
+
 describe("listing rules", () => {
   it("rejects http apply links and a link plus an email at once", async () => {
     const base = `insert into public.internships (id, title, company_name, source, field_id, area, work_type, snippet, apply_kind, apply_url, apply_email, dedupe_key)

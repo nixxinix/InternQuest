@@ -429,3 +429,15 @@ No new screens: imported listings appear in Search, Home, and the landing page l
 **Found and fixed:** skills at the end of a sentence ("Excel and SQL.") were missed because the full stop stuck to the word.
 
 **Waiting on setup:** migration 0007, CRON_SECRET, and a JSearch key, before a live run.
+
+## Phase 6. Companies, verification, the admin queue, and reports: 2026-11-10
+
+W13 and W14 now run on real data; the sample data and the "preview only" note on /admin are gone (decision #100 closed). New screens: company log in (`/companies/login`) and company details (`/companies/settings`, with resubmitting after a rejection and deleting the account). "Report this listing" now saves real reports, from guests too.
+
+**Verified:** row-level security and constraints in the database tests: a company reads only its own row and can't write it directly; drafts are never public, while published and closed listings are; a published listing must be complete; admins, the audit log, and reports are server only; deleting a company's sign-in unlinks its listings without deleting them. Pure logic tests cover drafts, the publish checks, the admin queue rows, and the website check's private-address guard. Signed out, /admin and the company pages send you to the right log-in page. Lint, typecheck, 365 tests, and the production build pass.
+
+**Found and fixed while reviewing:** the companies table first had a direct-update path through the public API, which would have let an approved company rename itself around the server's checks; it's now server-only, and an approved company's name and website are locked. Publishing a job that JSearch had already imported failed with a misleading "you already have this listing" message; now the company's post wins and the imported copy is hidden for good. The "confirm the email by hand" admin action had no button. A listing's start date wasn't being saved.
+
+**Waiting on setup:** migration 0008 on the live project, and your account added to `admins` (docs/SUPABASE_SETUP.md). Optional: Resend for company confirmation emails.
+
+**Not in this phase:** CSV import for companies (SPEC §5.1, "Later"), changing a company's work email, name, or website after approval (needs a re-review flow), and email notices to companies about approval or rejection (they see it on their dashboard).

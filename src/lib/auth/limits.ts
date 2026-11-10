@@ -34,6 +34,14 @@ export const RATE_LIMITS = {
   ai: { max: 10, windowSeconds: 10 * 60 },
   /** Nominatim's policy: at most 1 request per second from the whole app. */
   nominatim: { max: 1, windowSeconds: 1 },
+  /** New company accounts from one network. */
+  companySignup: { max: 20, windowSeconds: 60 * 60 },
+  /** Company login tries, per email and per network (SPEC §14: rate-limit login). */
+  companyLogin: { max: 10, windowSeconds: 15 * 60 },
+  companyLoginNetwork: { max: 100, windowSeconds: 15 * 60 },
+  /** Listing reports, per network (guests can report too) and per listing. */
+  report: { max: 20, windowSeconds: 60 * 60 },
+  reportListing: { max: 10, windowSeconds: 24 * 60 * 60 },
 } as const;
 
 export type RateLimitKind = keyof typeof RATE_LIMITS;

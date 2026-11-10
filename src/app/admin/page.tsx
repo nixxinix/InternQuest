@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AdminQueue } from "@/components/admin/AdminQueue";
+import { loadQueue, requireAdmin } from "@/lib/admin/server";
 
 export const metadata: Metadata = {
   title: "Admin",
   robots: { index: false, follow: false },
 };
 
-/** W14. TODO(Phase 6): protected by an admin role check before anything real is shown here. */
+/** W14. Behind an admin membership check (src/lib/admin/server.ts): requireAdmin() redirects anyone else. */
 export default function AdminPage() {
   return (
     <Suspense
@@ -24,7 +25,13 @@ export default function AdminPage() {
         </div>
       }
     >
-      <AdminQueue />
+      <QueueLoader />
     </Suspense>
   );
+}
+
+async function QueueLoader() {
+  const admin = await requireAdmin();
+  const { items, audit } = await loadQueue();
+  return <AdminQueue initialItems={items} initialAudit={audit} adminLabel={admin.label} />;
 }

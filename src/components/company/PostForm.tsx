@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type ReactNode } from "react";
+import { publishListing, saveListingDraft } from "@/app/actions/company";
+import { FormError } from "@/components/auth/AuthShell";
 import { BusinessHeader, HEADER_LINK } from "@/components/layout/BusinessHeader";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, SelectField, TextField } from "@/components/ui/Field";
@@ -13,9 +15,9 @@ import { cn } from "@/lib/cn";
 import { CITIES } from "@/lib/catalog/cities";
 import { FIELDS, isFieldId } from "@/lib/catalog/fields";
 import { searchSkills, skillName } from "@/lib/catalog/skills";
+import type { Company } from "@/lib/company/account";
 import {
   DESC_MAX,
-  EMPTY_DRAFT,
   MAX_POST_SKILLS,
   TITLE_MAX,
   draftPreview,
@@ -25,69 +27,104 @@ import {
   type PostingErrors,
 } from "@/lib/company/posting";
 import type { WorkType } from "@/lib/listings/types";
-import { SAMPLE_COMPANY, SAMPLE_EDIT_DRAFT, SAMPLE_POSTINGS } from "@/lib/sample/company";
 import { manilaDate } from "@/lib/tracker/log";
 
 const CHIP = "inline-flex min-h-tap cursor-pointer items-center gap-1.5 border-2 px-3 text-base has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink";
 const ON = "border-green bg-green font-semibold text-screen";
 const OFF = "border-muted bg-screen text-ink hover:border-ink";
 
+type Status = "draft" | "published" | "closed" | null;
+
 /**
- * W13 post form (USER_FLOWS §7.6–7). No game elements. DESIGN PREVIEW.
- * Review switches: ?id=<posting> to edit, ?state=pending|rejected (Publish locked).
- * TODO(Phase 6): server actions save the draft / publish, re-checking everything.
+ * W13 post form (USER_FLOWS §7.6–7). No game elements. Saving (draft or
+ * publish) always writes to the database first, then the full check runs
+ * again server side before anything goes live (never trust the client).
  */
-export function PostForm() {
+export function PostForm({
+  company,
+  editingId,
+  editingStatus,
+  initialDraft,
+}: {
+  company: Company;
+  editingId: string | null;
+  editingStatus: Status;
+  initialDraft: PostingDraft;
+}) {
   const router = useRouter();
-  const params = useSearchParams();
   const uid = useId();
   const formRef = useRef<HTMLFormElement>(null);
-  const editing = SAMPLE_POSTINGS.find((p) => p.id === params.get("id")) ?? null;
-  const stateParam = params.get("state");
-  const approved = stateParam !== "pending" && stateParam !== "rejected";
+  const errorRef = useRef<HTMLDivElement>(null);
+  const approved = company.approved;
   const [today] = useState(() => manilaDate(new Date()));
 
-  const [d, setD] = useState<PostingDraft>(() => (editing ? { ...SAMPLE_EDIT_DRAFT, title: editing.title } : EMPTY_DRAFT));
+  const [listingId, setListingId] = useState(editingId);
+  const [d, setD] = useState<PostingDraft>(initialDraft);
   const [tried, setTried] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"draft" | "publish" | null>(null);
   const set = (patch: Partial<PostingDraft>) => setD((v) => ({ ...v, ...patch }));
 
-  const errors = validatePosting(d, today, SAMPLE_COMPANY.email);
+  const errors = validatePosting(d, today, company.workEmail);
   const show = (k: keyof PostingErrors) => (tried ? errors[k] : undefined);
   const checklist = postingChecklist(d, errors);
-  const preview = draftPreview(d, SAMPLE_COMPANY.name, approved, today);
-  const back = `/companies/dashboard${approved ? "" : `?state=${stateParam}`}`;
+  const preview = draftPreview(d, company.name, approved, today);
+  const back = "/companies/dashboard";
 
-  const finish = (saved: "draft" | "published") => {
-    const q = new URLSearchParams();
-    if (!approved && stateParam) q.set("state", stateParam);
-    q.set("saved", saved);
-    router.push(`/companies/dashboard?${q}`);
-  };
+  const goBack = (saved: "draft" | "published") => router.push(`${back}?saved=${saved}`);
 
-  const publish = () => {
+  const publish = async () => {
     setTried(true);
+    setServerError(null);
     if (Object.keys(errors).length > 0) {
       requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"], [data-invalid="true"] input, [data-invalid="true"] button')?.focus());
       return;
     }
-    finish("published");
+    setBusy("publish");
+    const saveRes = await saveListingDraft(d, listingId ?? undefined).catch(() => ({ ok: false as const, error: "Couldn't reach InternQuest. Check your connection and try again." }));
+    if (!saveRes.ok) {
+      setBusy(null);
+      setServerError(saveRes.error);
+      requestAnimationFrame(() => errorRef.current?.focus());
+      return;
+    }
+    const id = saveRes.id;
+    setListingId(id);
+    const publishRes = await publishListing(id).catch(() => ({ ok: false as const, error: "Couldn't reach InternQuest. Check your connection and try again." }));
+    setBusy(null);
+    if (!publishRes.ok) {
+      setServerError(publishRes.error);
+      requestAnimationFrame(() => errorRef.current?.focus());
+      return;
+    }
+    goBack("published");
   };
 
-  // A draft only needs a title, so nobody loses work halfway through.
-  const saveDraft = () => {
-    if (d.title.trim().length < 2) {
-      setDraftError("Add a title first, so you can find the draft later.");
+  // A draft only needs a title (3+ characters), so nobody loses work halfway through.
+  const saveDraft = async () => {
+    setServerError(null);
+    if (d.title.trim().length < 3) {
+      setDraftError("Add a title first (at least 3 characters), so you can find the draft later.");
       requestAnimationFrame(() => document.getElementById(`${uid}-title`)?.querySelector("input")?.focus());
       return;
     }
-    finish("draft");
+    setBusy("draft");
+    const res = await saveListingDraft(d, listingId ?? undefined).catch(() => ({ ok: false as const, error: "Couldn't reach InternQuest. Check your connection and try again." }));
+    setBusy(null);
+    if (!res.ok) {
+      setServerError(res.error);
+      requestAnimationFrame(() => errorRef.current?.focus());
+      return;
+    }
+    setListingId(res.id);
+    goBack("draft");
   };
 
   return (
     <>
       <BusinessHeader area="for companies" home={back}>
-        <span className="hidden px-3 text-sm text-bezel-text sm:inline">{SAMPLE_COMPANY.name}</span>
+        <span className="hidden px-3 text-sm text-bezel-text sm:inline">{company.name}</span>
         <Link href="/companies" className={HEADER_LINK}>
           Log out
         </Link>
@@ -97,11 +134,20 @@ export function PostForm() {
           <PixelIcon name="chevronRight" scale={2} className="rotate-180" />
           Your listings
         </Link>
-        <h1 className="text-2xl font-semibold lg:text-3xl">{editing ? `Edit “${editing.title}”` : "New listing"}</h1>
+        <h1 className="text-2xl font-semibold lg:text-3xl">{editingId ? `Edit "${d.title || "listing"}"` : "New listing"}</h1>
         {!approved && (
           <p className="mt-2 border-l-4 border-ink bg-screen p-3 text-base">
             You can save this as a draft now. It goes live when your company is approved.
           </p>
+        )}
+        {editingStatus === "published" && (
+          <p className="mt-2 border-l-4 border-green bg-green-tint p-3 text-base">This listing is live. Saving updates it right away.</p>
+        )}
+
+        {serverError && (
+          <div ref={errorRef} tabIndex={-1} className="mt-4 focus:outline-none">
+            <FormError message={serverError} />
+          </div>
         )}
 
         <div className="mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-10">
@@ -111,8 +157,8 @@ export function PostForm() {
             className="space-y-6"
             onSubmit={(e) => {
               e.preventDefault();
-              if (approved) publish();
-              else saveDraft();
+              if (approved) void publish();
+              else void saveDraft();
             }}
           >
             <Group title="The role">
@@ -273,7 +319,7 @@ export function PostForm() {
                   inputMode="email"
                   value={d.apply.email}
                   onChange={(e) => set({ apply: { kind: "email", email: e.target.value } })}
-                  placeholder={`e.g. ojt@${SAMPLE_COMPANY.email.split("@")[1]}`}
+                  placeholder={`e.g. ojt@${company.workEmail.split("@")[1]}`}
                   hint="On your company's domain, so interns know it's really you."
                   error={show("apply")}
                 />
@@ -293,7 +339,7 @@ export function PostForm() {
             )}
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
               {approved ? (
-                <Button type="submit" size="lg">
+                <Button type="submit" size="lg" loading={busy === "publish"}>
                   Publish
                 </Button>
               ) : (
@@ -301,7 +347,7 @@ export function PostForm() {
                   Publish
                 </Button>
               )}
-              <Button type={approved ? "button" : "submit"} variant="secondary" size="lg" onClick={approved ? saveDraft : undefined}>
+              <Button type={approved ? "button" : "submit"} variant="secondary" size="lg" loading={busy === "draft"} onClick={approved ? () => void saveDraft() : undefined}>
                 Save draft
               </Button>
               {!approved && (

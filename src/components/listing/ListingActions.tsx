@@ -413,7 +413,7 @@ export function FullPostingLink({ listing }: { listing: SampleListing }) {
   );
 }
 
-export function ReportButton({ listingTitle }: { listingTitle: string }) {
+export function ReportButton({ listingId, listingTitle }: { listingId: string; listingTitle: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -425,7 +425,7 @@ export function ReportButton({ listingTitle }: { listingTitle: string }) {
         <PixelIcon name="alert" scale={2} />
         Report this listing
       </button>
-      <ReportSheet open={open} onClose={() => setOpen(false)} listingTitle={listingTitle} />
+      <ReportSheet open={open} onClose={() => setOpen(false)} listingId={listingId} listingTitle={listingTitle} />
     </>
   );
 }

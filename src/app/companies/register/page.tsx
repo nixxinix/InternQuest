@@ -10,7 +10,7 @@ export default function CompanyRegisterPage() {
   return (
     <>
       <BusinessHeader area="for companies" home="/companies">
-        <Link href="/login?as=company" className={HEADER_LINK}>
+        <Link href="/companies/login" className={HEADER_LINK}>
           Log in
         </Link>
       </BusinessHeader>

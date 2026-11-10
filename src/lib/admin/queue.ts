@@ -106,6 +106,16 @@ export type AuditEntry = {
   reason: string;
 };
 
+/** QueueItem ids combine every kind in one list (decide/nextItem look up by id alone), so report and flag ids carry a kind prefix; a company's id is its own uuid. */
+export function reportItemInternshipId(itemId: string): string | null {
+  return itemId.startsWith("r-") ? itemId.slice(2) : null;
+}
+export function flagItemRowId(itemId: string): number | null {
+  if (!itemId.startsWith("f-")) return null;
+  const n = Number(itemId.slice(2));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 export function subjectOf(item: QueueItem): string {
   if (item.kind === "company") return item.name;
   if (item.kind === "report") return `${item.listingTitle} (${item.company})`;

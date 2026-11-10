@@ -23,6 +23,7 @@
    6. `supabase/migrations/0006_learning.sql`, then run `supabase/seed.sql` again
       (it adds the learning resources; running it twice is safe)
    7. `supabase/migrations/0007_imports.sql`
+   8. `supabase/migrations/0008_companies.sql`
 
    Later migrations go in the same way, in number order, once each.
 
@@ -68,3 +69,27 @@ day at 04:00 Manila. On Vercel, add `CRON_SECRET` (16+ random characters) and,
 for imports, `JSEARCH_API_KEY` to the project's environment variables. To run
 it by hand: `curl -H "Authorization: Bearer <CRON_SECRET>" https://<site>/api/cron/daily`.
 Each run is logged in the `import_runs` table (counts only).
+
+**Admin access (Phase 6):** nobody is an admin until you add them by hand. Sign
+up a normal account for yourself on the site, then find its id under
+Authentication → Users, and run in the SQL Editor:
+```sql
+insert into public.admins (user_id) values ('<that user id>');
+```
+Then log in with that account and open `/admin`. To remove an admin, delete the
+row. Keep the list short: admins can approve companies, hide listings, and
+suspend accounts.
+
+**Company accounts (Phase 6):** companies sign up at `/companies/register` with
+their real work email. Supabase's own "Confirm email" setting doesn't apply here
+because the server creates the account. To prove the company can read that
+inbox, set `RESEND_API_KEY`, `RESEND_FROM` (an address on a domain you've
+verified in Resend), and `SITE_URL` (the public address, for the link). Without
+them, no email is sent: during review the admin checks the address another way
+(for example, a call to the company's listed number) and presses "I checked the
+email another way", which is logged.
+
+**Suspending** a company or a user (from `/admin`) blocks their sign-in through
+Supabase Auth (Authentication → Users shows them as banned). To undo it, remove
+the ban there and set the company's `status` back to `approved` in the
+`companies` table.

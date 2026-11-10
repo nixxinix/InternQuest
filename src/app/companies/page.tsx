@@ -21,7 +21,7 @@ export default function CompaniesPage() {
   return (
     <>
       <BusinessHeader area="for companies" home="/companies">
-        <Link href="/login?as=company" className={HEADER_LINK}>
+        <Link href="/companies/login" className={HEADER_LINK}>
           Log in
         </Link>
       </BusinessHeader>
@@ -35,7 +35,7 @@ export default function CompaniesPage() {
           <ButtonLink href="/companies/register" size="lg">
             Register your company
           </ButtonLink>
-          <ButtonLink href="/login?as=company" size="lg" variant="secondary">
+          <ButtonLink href="/companies/login" size="lg" variant="secondary">
             Log in
           </ButtonLink>
         </div>

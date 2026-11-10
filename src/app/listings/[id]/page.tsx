@@ -139,7 +139,7 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
               does, tell us and we&apos;ll look into it.
             </p>
             <div className="mt-2">
-              <ReportButton listingTitle={listing.title} />
+              <ReportButton listingId={listing.id} listingTitle={listing.title} />
             </div>
           </aside>
         </div>

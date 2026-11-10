@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { CompanyDashboard } from "@/components/company/CompanyDashboard";
+import { getCompany, getCompanyListings } from "@/lib/company/server";
 
 export const metadata: Metadata = {
   title: "Your listings",
@@ -25,7 +27,15 @@ export default function CompanyDashboardPage() {
         </div>
       }
     >
-      <CompanyDashboard />
+      <DashboardLoader />
     </Suspense>
   );
+}
+
+/** Loads the signed-in company and its listings on the server; the real security check. */
+async function DashboardLoader() {
+  const company = await getCompany();
+  if (!company) redirect("/companies/login");
+  const postings = await getCompanyListings(company.id);
+  return <CompanyDashboard company={company} initialPostings={postings} />;
 }

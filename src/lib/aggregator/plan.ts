@@ -5,7 +5,8 @@
  * - The same posting seen again (same source id) is refreshed, not duplicated.
  * - The same job from another source (same dedupe key, SPEC §5.3) is stored
  *   once. A company's direct post or an admin entry always wins over an
- *   aggregator copy, so it's never overwritten.
+ *   aggregator copy, so it's never overwritten, and a copy it superseded
+ *   (publishListing hides it) is never refreshed back to life.
  * - Duplicates inside one batch keep the first.
  */
 import type { ImportedListing } from "./types";
@@ -34,7 +35,16 @@ export function planImport(incoming: ImportedListing[], existing: ExistingListin
     }
     seen.add(l.dedupeKey);
 
-    const match = bySourceRef.get(`${l.source}:${l.sourceRef}`) ?? byDedupe.get(l.dedupeKey) ?? byId.get(l.id);
+    // A post from another source already owns this job: it wins, even if we
+    // also have our own older copy of it (a company published the same role
+    // after we imported it, and our copy was superseded).
+    const owner = byDedupe.get(l.dedupeKey);
+    if (owner && owner.source !== l.source) {
+      plan.skipped.directWins += 1;
+      continue;
+    }
+
+    const match = bySourceRef.get(`${l.source}:${l.sourceRef}`) ?? owner ?? byId.get(l.id);
     if (!match) {
       plan.insert.push(l);
     } else if (match.source === l.source) {
