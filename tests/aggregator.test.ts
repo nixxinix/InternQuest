@@ -82,7 +82,7 @@ describe("JSearch adapter", () => {
   it("asks for one page of Philippine results", () => {
     const u = new URL(jsearchUrl("internship in Philippines"));
     expect(u.host).toBe("jsearch.p.rapidapi.com");
-    expect(Object.fromEntries(u.searchParams)).toMatchObject({ country: "ph", num_pages: "1", page: "1" });
+    expect(Object.fromEntries(u.searchParams)).toMatchObject({ country: "ph", num_pages: "1" });
   });
 
   it("maps a posting to a listing, and counts why others were skipped", () => {
@@ -138,6 +138,22 @@ describe("JSearch adapter", () => {
   it("survives a broken answer", () => {
     expect(parseJsearch({ error: "quota" }, NOW)).toEqual({ listings: [], skipped: { "unexpected answer": 1 } });
     expect(parseJsearch(null, NOW).listings).toEqual([]);
+  });
+});
+
+describe("JSearch v5 answer shape", () => {
+  it("reads data.jobs, prefers the short job_uid, and builds the /search-v2 URL", () => {
+    const longId = "UHpsN1ZSWlhoUUk0".repeat(20);
+    const { listings, skipped } = parseJsearch(
+      { status: "OK", data: { jobs: [job({ job_id: longId, job_uid: "Pzl7VRZXhQI4gF_OAAAAAA==" })] } },
+      NOW,
+    );
+    expect(skipped).toEqual({});
+    expect(listings).toHaveLength(1);
+    expect(listings[0].sourceRef).toBe("Pzl7VRZXhQI4gF_OAAAAAA==");
+    const url = new URL(jsearchUrl("internship in Philippines"));
+    expect(url.pathname).toBe("/search-v2");
+    expect(url.searchParams.get("country")).toBe("ph");
   });
 });
 

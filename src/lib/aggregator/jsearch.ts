@@ -19,19 +19,22 @@ export const JSEARCH_HOST = "jsearch.p.rapidapi.com";
  */
 export const JSEARCH_QUERIES = ["internship in Philippines", "OJT in Philippines"] as const;
 
+/** JSearch v5's search endpoint (the old "/search" no longer exists). */
+export const JSEARCH_PATH = "/search-v2";
+
 export function jsearchUrl(query: string): string {
   const params = new URLSearchParams({
     query,
-    page: "1",
     num_pages: "1",
     country: "ph",
     date_posted: "month",
   });
-  return `https://${JSEARCH_HOST}/search?${params}`;
+  return `https://${JSEARCH_HOST}${JSEARCH_PATH}?${params}`;
 }
 
 type JSearchJob = {
   job_id?: unknown;
+  job_uid?: unknown;
   employer_name?: unknown;
   job_title?: unknown;
   job_description?: unknown;
@@ -55,12 +58,15 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 export function parseJsearch(json: unknown, now: Date): ParseResult {
   const skipped: Record<string, number> = {};
   const skip = (reason: string) => (skipped[reason] = (skipped[reason] ?? 0) + 1);
-  const data = (json as { data?: unknown })?.data;
+  // v5 answers { data: { jobs: [...] } }; the older shape was { data: [...] }.
+  const raw = (json as { data?: unknown })?.data;
+  const data = Array.isArray(raw) ? raw : (raw as { jobs?: unknown } | null)?.jobs;
   if (!Array.isArray(data)) return { listings: [], skipped: { "unexpected answer": 1 } };
 
   const listings: ImportedListing[] = [];
   for (const job of data as JSearchJob[]) {
-    const sourceRef = str(job.job_id);
+    // job_uid is short and stable; job_id in v5 is a ~350-character token, too long to look up in bulk.
+    const sourceRef = str(job.job_uid) || str(job.job_id);
     const title = str(job.job_title).slice(0, 120);
     const company = str(job.employer_name).slice(0, 120);
     if (!sourceRef || title.length < 3 || !company) {
