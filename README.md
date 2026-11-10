@@ -103,13 +103,13 @@ Built one phase at a time. Full details are in [SPEC.md](SPEC.md).
 
 - [x] **Phase 0**: setup, folder structure, env variables, design tokens
 - [x] **Design**: user flows, visual direction, design system, wireframes, screens ([docs/](docs/))
-- [ ] **Phase 1**: auth, profile, skills, location, seeded listings, search
-- [ ] **Phase 2**: matching engine wired to the database, Match Panel, `/go/:id`, quest log
-- [ ] **Phase 3**: EXP, levels, streaks, badges, modes, onboarding, leaderboard
-- [ ] **Phase 4**: tips content, skill-gap resources, optional AI helper
-- [ ] **Phase 5**: listings API adapter, dedupe, daily refresh jobs
-- [ ] **Phase 6**: company posting, verification, admin queue, reports
-- [ ] **Phase 7**: polish, accessibility, PWA, performance, pilot checklist
+- [x] **Phase 1**: auth, profile, skills, location, seeded listings, search
+- [x] **Phase 2**: matching engine wired to the database, Match Panel, `/go/:id`, quest log
+- [x] **Phase 3**: EXP, levels, streaks, badges, modes, onboarding, leaderboard
+- [x] **Phase 4**: tips content, skill-gap resources, optional AI helper
+- [x] **Phase 5**: listings API adapter, dedupe, daily refresh jobs
+- [x] **Phase 6**: company posting, verification, admin queue, reports
+- [x] **Phase 7**: polish, accessibility, PWA, performance, pilot checklist
 
 ## Principles
 
@@ -129,6 +129,8 @@ Built one phase at a time. Full details are in [SPEC.md](SPEC.md).
 | [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Tokens and components |
 | [docs/WIREFRAMES.md](docs/WIREFRAMES.md) | Mobile and desktop layouts |
 | [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) | Why every big choice was made |
+| [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) | Connecting the database, admins, and the daily job |
+| [docs/PILOT_CHECKLIST.md](docs/PILOT_CHECKLIST.md) | Everything to set up, decide, and test before the pilot |
 
 ## Contributing
 

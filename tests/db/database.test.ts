@@ -789,3 +789,54 @@ describe("listing rules", () => {
     await expect(db.query(dup, ["kalye-dup", dedupeKey("Kalye Logistics", "Data Analyst OJT", "Pasig")])).rejects.toThrow(/duplicate key/);
   });
 });
+
+describe("retention clean-up (Phase 7)", () => {
+  const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+  beforeEach(async () => {
+    await asAdmin();
+    await db.exec("delete from public.click_logs; delete from public.reports; delete from public.admin_audit");
+  });
+
+  it("deletes only data past its period, and never an open report", async () => {
+    const [{ id: listing }] = await rows<{ id: string }>("select id from public.internships order by id limit 1");
+    await db.query("insert into public.click_logs (internship_id, kind, created_at) values ($1, 'link', $2), ($1, 'link', $3)", [listing, ago(400), ago(10)]);
+    await db.query(
+      `insert into public.reports (internship_id, reason, created_at, resolved_at, resolution) values
+         ($1, 'scam', $2, $2, 'Dismissed'),  -- resolved long ago: deleted
+         ($1, 'scam', $3, $3, 'Dismissed'),  -- resolved recently: kept
+         ($1, 'payment', $2, null, null)     -- open, however old: kept`,
+      [listing, ago(400), ago(5)],
+    );
+    await db.query("insert into public.admin_audit (admin_label, kind, item_id, subject, action, reason, created_at) values ('me', 'report', 'r-x', 'x', 'Hide', 'Scam', $1)", [ago(30)]);
+
+    await asService();
+    const [{ purge_old_data: counts }] = await rows<{ purge_old_data: Record<string, number> }>("select public.purge_old_data(365, 180, 180, 730, 90)");
+    expect(counts).toMatchObject({ clicks: 1, reports: 1, audit: 0 });
+
+    await asAdmin();
+    expect(await rows("select count(*)::int as n from public.click_logs")).toEqual([{ n: 1 }]);
+    expect(await rows("select reason, resolved_at is null as open from public.reports order by reason")).toEqual([
+      { reason: "payment", open: true },
+      { reason: "scam", open: false },
+    ]);
+    expect(await rows("select count(*)::int as n from public.admin_audit")).toEqual([{ n: 1 }]);
+  });
+
+  it("logs an admin CSV import in the audit log, and still refuses unknown kinds", async () => {
+    await asService();
+    await db.query("insert into public.admin_audit (admin_label, kind, item_id, subject, action, reason) values ('me', 'import', 'csv-1', 'listings.csv (3 listings)', 'Imported listings', '3 new')");
+    await expect(
+      db.query("insert into public.admin_audit (admin_label, kind, item_id, subject, action, reason) values ('me', 'party', 'x', 'x', 'x', 'x')"),
+    ).rejects.toThrow(/admin_audit_kind_check/);
+  });
+
+  it("refuses a period under a week, and is server only", async () => {
+    await asService();
+    await expect(db.query("select public.purge_old_data(1, 180, 180, 730, 90)")).rejects.toThrow(/at least 7 days/);
+    for (const as of [asAnon, () => asUser(A)]) {
+      await as();
+      await expect(db.query("select public.purge_old_data(365, 180, 180, 730, 90)")).rejects.toThrow(/permission denied/);
+    }
+  });
+});

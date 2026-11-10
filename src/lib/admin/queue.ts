@@ -99,7 +99,8 @@ export const ACTIONS: Record<QueueKind, ActionDef[]> = {
 export type AuditEntry = {
   at: string; // ISO
   admin: string;
-  kind: QueueKind;
+  /** "import" is an admin CSV import (src/lib/admin/csvImport.ts), not a queue item. */
+  kind: QueueKind | "import";
   itemId: string;
   subject: string;
   action: string;

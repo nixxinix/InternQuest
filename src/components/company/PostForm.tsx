@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type ReactNode } from "react";
-import { publishListing, saveListingDraft } from "@/app/actions/company";
+import { companyLogOut, publishListing, saveListingDraft } from "@/app/actions/company";
 import { FormError } from "@/components/auth/AuthShell";
 import { BusinessHeader, HEADER_LINK } from "@/components/layout/BusinessHeader";
 import { Button } from "@/components/ui/Button";
@@ -125,9 +125,11 @@ export function PostForm({
     <>
       <BusinessHeader area="for companies" home={back}>
         <span className="hidden px-3 text-sm text-bezel-text sm:inline">{company.name}</span>
-        <Link href="/companies" className={HEADER_LINK}>
-          Log out
-        </Link>
+        <form action={companyLogOut}>
+          <button type="submit" className={HEADER_LINK}>
+            Log out
+          </button>
+        </form>
       </BusinessHeader>
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-gutter pb-16 pt-4 lg:pt-8">
         <Link href={back} className="inline-flex min-h-tap items-center gap-1.5 font-semibold text-green underline-offset-4 hover:underline">

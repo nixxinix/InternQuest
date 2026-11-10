@@ -1,5 +1,6 @@
 import "server-only";
 import { revalidateTag } from "next/cache";
+import { RETENTION_DAYS } from "@/lib/retention";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { JSEARCH_HOST, JSEARCH_QUERIES, jsearchUrl, parseJsearch } from "./jsearch";
 import { planImport, type ExistingListing } from "./plan";
@@ -87,6 +88,8 @@ export type RefreshSummary = {
   skipped: Record<string, number>;
   expired: number;
   stale: number;
+  /** Rows deleted by the retention clean-up, by kind. Empty if it didn't run. */
+  purged: Record<string, number>;
   error: string | null;
 };
 
@@ -99,7 +102,7 @@ export type RefreshSummary = {
 export async function runDailyRefresh(adapter: ListingSourceAdapter = jsearchAdapter): Promise<RefreshSummary> {
   const admin = createServiceSupabase();
   const now = new Date().toISOString();
-  const summary: RefreshSummary = { source: adapter.name, fetched: 0, inserted: 0, updated: 0, skipped: {}, expired: 0, stale: 0, error: null };
+  const summary: RefreshSummary = { source: adapter.name, fetched: 0, inserted: 0, updated: 0, skipped: {}, expired: 0, stale: 0, purged: {}, error: null };
   const { data: run } = await admin.from("import_runs").insert({ source: adapter.name }).select("id").single<{ id: number }>();
 
   if (adapter.enabled()) {
@@ -143,6 +146,22 @@ export async function runDailyRefresh(adapter: ListingSourceAdapter = jsearchAda
   if (expiryError) summary.error = summary.error ?? `clean-up failed: ${expiryError.message}`.slice(0, 500);
   summary.expired = expiry?.expired ?? 0;
   summary.stale = expiry?.stale ?? 0;
+
+  // Delete data past its retention period (0009_retention.sql). A failure is
+  // logged and doesn't stop the run; tomorrow's run catches up.
+  const { data: purged, error: purgeError } = await admin.rpc("purge_old_data", {
+    p_click_days: RETENTION_DAYS.clicks,
+    p_report_days: RETENTION_DAYS.reports,
+    p_flag_days: RETENTION_DAYS.flags,
+    p_audit_days: RETENTION_DAYS.audit,
+    p_run_days: RETENTION_DAYS.runs,
+  });
+  if (purgeError) {
+    console.error("[refresh] retention clean-up failed:", purgeError.message);
+    summary.error = summary.error ?? `retention clean-up failed: ${purgeError.message}`.slice(0, 500);
+  } else {
+    summary.purged = purged as Record<string, number>;
+  }
 
   if (run) {
     await admin

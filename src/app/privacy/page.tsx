@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
+import { RETENTION_DAYS, retentionLabel } from "@/lib/retention";
 
 export const metadata: Metadata = {
   title: "Privacy notice",
@@ -43,7 +44,7 @@ const KEEP: { what: string; why: string; howLong: string }[] = [
   {
     what: "Notes on unusual activity, such as many confirmed applications within an hour",
     why: "To keep the game fair. An admin looks; nothing is taken away automatically. If the activity wasn't real, the admin may remove the EXP from that hour or suspend the account.",
-    howLong: "[Until reviewed, plus a set period]",
+    howLong: `Until an admin reviews them, then ${retentionLabel(RETENTION_DAYS.flags)} more`,
   },
   { what: "Your settings", why: "To remember how you like the app", howLong: "Until you delete your account" },
   {
@@ -59,17 +60,17 @@ const KEEP: { what: string; why: string; howLong: string }[] = [
   {
     what: "Apply clicks: which listing, and when",
     why: "To ask “Did you apply?” and check EXP isn't faked. Companies see only totals, never who.",
-    howLong: "[12 months], then deleted. Unlinked from you if you delete your account.",
+    howLong: `${retentionLabel(RETENTION_DAYS.clicks)}, then deleted. Unlinked from you if you delete your account.`,
   },
   {
     what: "Reports you send about listings: the reason, your note if you add one, and your account if you're signed in",
     why: "To review and remove unsafe listings. The company never sees who reported.",
-    howLong: "[Until reviewed, plus a set period]. Unlinked from you if you delete your account.",
+    howLong: `Until an admin reviews them, then ${retentionLabel(RETENTION_DAYS.reports)} more. Unlinked from you if you delete your account.`,
   },
   {
     what: "A log of admin decisions (what was decided about which company, listing, or account, and why)",
     why: "So every removal or suspension can be explained and checked",
-    howLong: "[A set period]",
+    howLong: retentionLabel(RETENTION_DAYS.audit),
   },
   {
     what: "Company accounts: the company's name, website, and registration number, and the representative's work email and role",

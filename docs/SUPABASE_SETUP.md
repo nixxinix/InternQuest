@@ -24,6 +24,7 @@
       (it adds the learning resources; running it twice is safe)
    7. `supabase/migrations/0007_imports.sql`
    8. `supabase/migrations/0008_companies.sql`
+   9. `supabase/migrations/0009_retention.sql`
 
    Later migrations go in the same way, in number order, once each.
 
@@ -58,7 +59,8 @@ way to reach you. A project URL works; it doesn't have to be a personal email.
 Without it, only cities on our list can be picked.
 
 **Free-plan note:** a free project pauses after about 7 days without activity
-(SPEC §3). Phase 7 adds a daily ping for the pilot.
+(SPEC §3). The daily job below uses the database every day, which keeps it
+awake; check Vercel → Cron Jobs if the project ever pauses.
 
 **Recovery by email** needs an email-sending service (custom SMTP, for example
 Resend's free tier). Until one is connected, recovery codes are the only way
@@ -68,7 +70,8 @@ to reset a password, and the email option is hidden (`src/lib/auth/features.ts`)
 day at 04:00 Manila. On Vercel, add `CRON_SECRET` (16+ random characters) and,
 for imports, `JSEARCH_API_KEY` to the project's environment variables. To run
 it by hand: `curl -H "Authorization: Bearer <CRON_SECRET>" https://<site>/api/cron/daily`.
-Each run is logged in the `import_runs` table (counts only).
+Each run is logged in the `import_runs` table (counts only). The same job deletes
+data past its retention period (`src/lib/retention.ts`, Phase 7).
 
 **Admin access (Phase 6):** nobody is an admin until you add them by hand. Sign
 up a normal account for yourself on the site, then find its id under

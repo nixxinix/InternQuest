@@ -441,3 +441,17 @@ W13 and W14 now run on real data; the sample data and the "preview only" note on
 **Waiting on setup:** migration 0008 on the live project, and your account added to `admins` (docs/SUPABASE_SETUP.md). Optional: Resend for company confirmation emails.
 
 **Not in this phase:** CSV import for companies (SPEC §5.1, "Later"), changing a company's work email, name, or website after approval (needs a re-review flow), and email notices to companies about approval or rejection (they see it on their dashboard).
+
+## Phase 7. Polish, accessibility, PWA, performance, pilot checklist: 2026-11-10
+
+**Lighthouse (mobile, simulated slow 4G, production build):** landing, listing detail, privacy, companies, log in, and offline pages all score 100 for accessibility and best practices, 95 to 97 for performance, and 100 for SEO (60 on the offline page, which is set to "noindex" on purpose). Layout shift is 0 to 0.004 everywhere. Signed-in screens weren't run through Lighthouse (it can't log in); each was reviewed for contrast, keyboard use, and reduced motion in the design phase (W1 to W14 above).
+
+**Performance fix:** the landing page's main heading repainted when the Inter font arrived late. With font-display "optional", its Largest Contentful Paint went from 3.2 s to 2.6 s and first paint from 1.4 s to 0.9 s (decision #148). Putting the CSS inside the HTML was tried and dropped (#149).
+
+**New:** the installable app (manifest, icons, offline page, service worker, #146), the admin CSV import (#147), and data retention in the daily job (#145). The offline page works without JavaScript, and the service worker keeps its stylesheet, so it looks right even with no connection on the first visit.
+
+**Found and fixed:** "Log out" in the admin queue and the company post form were plain links to the home page and didn't sign anyone out. The CSV template's sample skills included one we don't have ("Data entry"), so the template itself would have shown a warning.
+
+**Verified:** lint, typecheck, 380 tests, and the production build pass. The manifest, icons (192, 512, Apple 180), service worker, and offline page are served correctly. Signed out, /admin/import sends you to log in and back.
+
+**Waiting on setup:** migration 0009 on the live project (after 0008). Everything else to set up, decide, and test before the pilot is in [PILOT_CHECKLIST.md](PILOT_CHECKLIST.md).

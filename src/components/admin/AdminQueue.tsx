@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { decideQueueItem, markCompanyEmailConfirmed, recheckWebsite } from "@/app/actions/admin";
+import { logOut } from "@/app/actions/auth";
 import { BusinessHeader, HEADER_LINK } from "@/components/layout/BusinessHeader";
 import { Button } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
@@ -168,9 +169,14 @@ function Queue({ initialItems, initialAudit, adminLabel }: { initialItems: Queue
         <button type="button" onClick={() => setAuditOpen(true)} className={HEADER_LINK} aria-haspopup="dialog">
           Audit log{audit.length ? ` (${audit.length})` : ""}
         </button>
-        <Link href="/" className={HEADER_LINK}>
-          Log out
+        <Link href="/admin/import" className={HEADER_LINK}>
+          Import listings
         </Link>
+        <form action={logOut}>
+          <button type="submit" className={HEADER_LINK}>
+            Log out
+          </button>
+        </form>
       </BusinessHeader>
       <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-gutter pb-16 pt-4 lg:pt-6">
         {/* Phone: an open item replaces the list, with a back link. */}

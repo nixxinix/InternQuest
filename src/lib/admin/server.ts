@@ -30,9 +30,9 @@ export async function currentAdmin(): Promise<Admin | null> {
 }
 
 /** For admin pages: sends anyone who isn't an admin to log in first. */
-export async function requireAdmin(): Promise<Admin> {
+export async function requireAdmin(page: "/admin" | "/admin/import" = "/admin"): Promise<Admin> {
   const admin = await currentAdmin();
-  if (!admin) redirect("/login?next=%2Fadmin");
+  if (!admin) redirect(`/login?next=${encodeURIComponent(page)}`);
   return admin;
 }
 
