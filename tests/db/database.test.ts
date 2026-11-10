@@ -698,6 +698,20 @@ describe("companies, drafts, admins, and reports (Phase 6)", () => {
     await expect(db.query("select * from public.companies")).resolves.toMatchObject({ rows: [] });
   });
 
+  it("tracks when a listing was last edited (the company dashboard orders by it)", async () => {
+    await asService();
+    await db.query("insert into public.internships (id, company_id, company_name, source, status, title, dedupe_key) values ('t6-edit', $1, 'Tanglaw Solar', 'direct', 'draft', 'Firmware Intern', 't6-edit')", [C]);
+    await db.exec("update public.internships set updated_at = now() - interval '2 days' where id = 't6-edit'");
+    await db.exec("update public.internships set title = 'Firmware Intern II' where id = 't6-edit'");
+    // The exact columns and ordering src/lib/company/server.ts asks for.
+    const list = await rows<{ id: string; fresh: boolean }>(
+      "select id, id, title, status, is_active, deadline, updated_at, created_at, updated_at > now() - interval '1 minute' as fresh from public.internships where company_id = $1 order by updated_at desc",
+      [C],
+    );
+    expect(list[0]).toMatchObject({ id: "t6-edit", fresh: true });
+    await db.exec("delete from public.internships where id = 't6-edit'");
+  });
+
   it("a draft is never publicly visible, but a published or closed listing is", async () => {
     await asService();
     const base = `insert into public.internships (id, company_id, company_name, source, status, title, dedupe_key) values ($1, $2, 'Tanglaw Solar', 'direct', $3, 'Firmware Intern', $1)`;

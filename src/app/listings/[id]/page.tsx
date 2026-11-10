@@ -11,6 +11,7 @@ import {
   ListingActions,
   ReportButton,
 } from "@/components/listing/ListingActions";
+import { ListingFrame } from "@/components/listing/ListingFrame";
 import { ButtonLink } from "@/components/ui/Button";
 import { PixelIcon } from "@/components/ui/PixelIcon";
 import { Tag } from "@/components/ui/Tag";
@@ -56,11 +57,9 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
   ];
 
   return (
-    // Signed in: the header says "My home" and the match uses the saved profile.
+    // Signed in: the intern app frame (sidebar) and the saved profile for the match; signed out: the public page.
     <AccountScope>
-      <PublicHeader />
-      {/* pb-32 on phones leaves room for the sticky Save / Apply bar. */}
-      <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-gutter pb-32 pt-3 lg:pb-12 lg:pt-6">
+      <ListingFrame header={<PublicHeader />} footer={<SiteFooter />}>
         <Suspense fallback={<BackLink />}>
           <BackToListings />
         </Suspense>
@@ -143,8 +142,7 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
             </div>
           </aside>
         </div>
-      </main>
-      <SiteFooter />
+      </ListingFrame>
     </AccountScope>
   );
 }

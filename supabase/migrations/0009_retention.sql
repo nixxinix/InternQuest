@@ -1,5 +1,5 @@
--- 0009_retention: deleting old data on a schedule (Phase 7, Data Privacy Act
--- "kept only as long as needed"), and logging admin CSV imports. The daily job calls purge_old_data() with
+-- 0009_retention: deleting old data on a schedule, and logging admin CSV imports (Phase 7).
+-- "kept only as long as needed"). The daily job calls purge_old_data() with
 -- the periods in src/lib/retention.ts, so they live in one place in code.
 --
 -- Only data that is done with is deleted:

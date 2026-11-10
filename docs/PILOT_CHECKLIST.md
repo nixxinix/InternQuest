@@ -9,7 +9,7 @@ data protection officer) can make.
 
 **Supabase** (full steps in [SUPABASE_SETUP.md](SUPABASE_SETUP.md))
 - [ ] Project in **Southeast Asia (Singapore)**.
-- [ ] Migrations `0001` to `0009` run in order, once each.
+- [ ] Migrations `0001` to `0010` run in order, once each.
 - [ ] `supabase/seed.sql` run (reference data). For the pilot, run only the part
       before "Sample listings": the samples are fictional.
 - [ ] Authentication: **"Allow new users to sign up" OFF**, minimum password

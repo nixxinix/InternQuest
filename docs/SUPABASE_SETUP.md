@@ -25,6 +25,7 @@
    7. `supabase/migrations/0007_imports.sql`
    8. `supabase/migrations/0008_companies.sql`
    9. `supabase/migrations/0009_retention.sql`
+   10. `supabase/migrations/0010_listing_updated_at.sql`
 
    Later migrations go in the same way, in number order, once each.
 

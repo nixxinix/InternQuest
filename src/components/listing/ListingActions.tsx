@@ -380,10 +380,15 @@ function matchProfile(account: Account | null, picks: ReturnType<typeof readPick
 /* Small islands used by the server-rendered page                           */
 /* ------------------------------------------------------------------------ */
 
-/** "Back to listings" that keeps the visitor's picks. */
+/**
+ * "Back to listings". Visitors go back to the landing page with their picks;
+ * signed-in users go to Search, which already uses their saved profile (the
+ * landing page is the signed-out front door, not a place to come back to).
+ */
 export function BackToListings() {
   const params = useSearchParams();
-  return <BackLink href={withQuery("/", picksQuery(readPicks(params)))} />;
+  const account = useAccountIfAvailable();
+  return <BackLink href={account ? "/search" : withQuery("/", picksQuery(readPicks(params)))} />;
 }
 
 export function BackLink({ href = "/" }: { href?: string }) {

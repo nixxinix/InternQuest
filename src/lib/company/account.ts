@@ -122,7 +122,7 @@ function daysBetween(from: string, to: string): number {
 
 export function postingFromRow(row: PostingRow, clicks: number, today: string): CompanyPosting {
   const status: CompanyPostingStatus = row.status === "draft" ? "draft" : row.is_active ? "active" : "closed";
-  const updated = (status === "draft" ? row.updated_at : row.updated_at).slice(0, 10);
+  const updated = row.updated_at.slice(0, 10);
   return {
     id: row.id,
     title: row.title,
