@@ -8,21 +8,25 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-16202a?style=flat-square&logo=typescript&logoColor=a6f05a)
 ![Tailwind](https://img.shields.io/badge/Tailwind-v4-16202a?style=flat-square&logo=tailwindcss&logoColor=a6f05a)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres_+_RLS-16202a?style=flat-square&logo=supabase&logoColor=a6f05a)
-![License](https://img.shields.io/badge/license-MIT-16202a?style=flat-square&labelColor=0b6e42)
-![Status](https://img.shields.io/badge/status-in_development-16202a?style=flat-square&labelColor=0b6e42)
+![Status](https://img.shields.io/badge/status-in%20development-1F6FEB?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-2EA44F?style=flat-square)
 
 **A game-like internship and OJT finder for the Philippines.**
 Type your skills and city, see real matches near you, and turn the job hunt into a quest you can actually stick with.
+
+[Overview](#overview) · [Features](#features) · [Tech Stack](#tech-stack) · [Getting Started](#getting-started) · [Roadmap](#roadmap) · [Documentation](#documentation)
 
 </div>
 
 ---
 
-## Why this exists
+## Overview
 
-Looking for an internship is stressful, scattered, and lonely. Listings live on a dozen sites, nobody tells you *why* you're a fit (or what's missing), and one rejection can kill your momentum.
+InternQuest puts internship and OJT listings in one place, explains why each listing fits you, and keeps you motivated with an optional game layer. Students, fresh graduates, and career shifters are all welcome.
 
-InternQuest puts it in one place:
+## Purpose
+
+Looking for an internship is stressful, scattered, and lonely. Listings live on a dozen sites, nobody tells you *why* you're a fit (or what's missing), and one rejection can kill your momentum. InternQuest is built to fix that:
 
 - **See real listings first.** No sign-up wall. Pick a field, a few skills, and a city, and the list re-ranks as you go.
 - **Know why a listing matches.** Every listing has a Match Panel: your match %, the skills you have, the skills you're missing, and a free resource for each gap.
@@ -31,19 +35,19 @@ InternQuest puts it in one place:
 
 ## Features
 
-| | |
+| Feature | Description |
 |---|---|
-| **Character sheet** | Username, city, skills as "abilities", interests, work-type preference. School is optional, so students, fresh grads, and career shifters are all welcome. |
-| **Smart matching** | Rule-based score: 50% skills, 25% distance, 15% field, 10% work type. A full breakdown shows how the score was reached. Weights live in one config file. |
+| **Character sheet** | Username, city, skills as "abilities", interests, and work-type preference. School is optional. |
+| **Smart matching** | Rule-based score: 50% skills, 25% distance, 15% field, 10% work type, with a full breakdown. Weights live in one config file. |
 | **Match Panel** | Matched skills, missing skills, and 1 to 2 free learning resources per gap. Works for logged-out visitors too. |
-| **Quest log** | Application tracker: Saved, Applied, Interview, Result. Drag and drop on desktop, tap-to-move on phones, with Undo on every change. |
-| **"Did you apply?"** | Click Apply, come back to the tab, confirm in one tap. Server-side checks keep EXP honest. |
-| **Tips and guides** | Resume, interview, and application guides in friendly plain language, linked to the exact step you're on. Printable checklists. |
-| **Game layer** | EXP, level-ups, weekly streaks (with a monthly rest week), badges, weekly quests, and a leaderboard that unlocks at Level 3 and always shows your personal best. |
+| **Quest log** | Application tracker (Saved, Applied, Interview, Result) with drag and drop on desktop, tap-to-move on phones, and Undo on every change. |
+| **"Did you apply?"** | Click Apply, come back to the tab, and confirm in one tap. Server-side checks keep EXP honest. |
+| **Tips and guides** | Resume, interview, and application guides in plain language, linked to the step you're on. Printable checklists. |
+| **Game layer** | EXP, level-ups, weekly streaks (with a monthly rest week), badges, weekly quests, and a leaderboard that unlocks at Level 3. |
 | **Privacy first** | Username and password only. No email or real name needed. Download or delete all your data any time. |
 | **Companies** | Verified companies can post and close internships. No game elements on company or admin screens. |
 
-## The look
+## Design
 
 Pixel-game style as a **layer** on a clean, readable base, like a pocket console. A dark bezel frames the app (header, nav, HUD) and the lime accent lives only there. Listings, forms, and tips stay calm and high-contrast on a light canvas.
 
@@ -56,53 +60,80 @@ Pixel-game style as a **layer** on a clean, readable base, like a pocket console
 | `ink` | `#121a21` | Body text |
 | `alert` | `#c2412d` | Deadlines and errors |
 
-Contrast is enforced by a test that reads the tokens and checks every text/background pair. The full reasoning is in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).
+Contrast is enforced by a test that reads the tokens and checks every text and background pair. The reasoning is in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).
 
-## Tech stack
+## Tech Stack
 
-- **Next.js** (App Router) + **TypeScript** (strict) + **Tailwind CSS v4**
-- **Supabase**: Postgres, row-level security, scheduled jobs
-- **Vercel** for hosting, installable as a **PWA**
-- **Vitest** for the matching, EXP, streak, and leaderboard logic, which lives as pure functions in `src/lib/`
+| Layer | Technology |
+|---|---|
+| Framework | Next.js (App Router), TypeScript (strict) |
+| Styling | Tailwind CSS v4 |
+| Database and auth | Supabase: Postgres, row-level security, scheduled jobs |
+| AI helper | Anthropic SDK (optional) |
+| Hosting | Vercel, installable as a PWA |
+| Testing | Vitest for matching, EXP, streak, and leaderboard logic (pure functions in `src/lib/`) |
 
-## Getting started
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Browser / PWA] --> N[Next.js App Router]
+    N --> L[src/lib<br/>matching, EXP, streaks]
+    N --> SB[(Supabase Postgres<br/>with RLS)]
+    J[Scheduled jobs<br/>listing refresh] --> SB
+    API[Listings API adapter] --> J
+
+    style U fill:#16202a,stroke:#a6f05a,color:#eef2f0
+    style N fill:#16202a,stroke:#a6f05a,color:#eef2f0
+    style L fill:#16202a,stroke:#0b6e42,color:#eef2f0
+    style SB fill:#16202a,stroke:#0b6e42,color:#eef2f0
+    style J fill:#16202a,stroke:#30363D,color:#eef2f0
+    style API fill:#16202a,stroke:#30363D,color:#eef2f0
+```
+
+The server is the referee: EXP, streaks, and the leaderboard are calculated on the server only, and the client is never trusted for rewards.
+
+## Project Structure
+
+```text
+src/app/                  Routes; globals.css holds every design token
+src/components/ui/        Plain UI components, used everywhere
+src/components/game/      Game layer (intern screens only)
+src/components/providers  GameModeProvider (Full / Light / Plain, reduced motion)
+src/lib/                  Pure logic: matching, EXP, streaks
+tests/                    Vitest
+content/tips/             Tips guides as markdown
+supabase/migrations/      Numbered SQL migrations
+docs/                     User flows, wireframes, design system, decision log
+```
+
+## Getting Started
+
+**Prerequisites:** Node.js and npm, plus a Supabase project when a phase needs it.
 
 ```bash
-git clone https://github.com/<your-username>/internquest.git
-cd internquest
+git clone https://github.com/nixxinix/InternQuest.git
+cd InternQuest
 npm install
 cp .env.example .env.local   # fill in values when a phase needs them
 npm run dev                  # http://localhost:3000  (design system at /styleguide)
 ```
 
-Before opening a pull request:
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the development server |
+| `npm run build` | Production build |
+| `npm run check` | Lint, type-check, and tests (run before opening a pull request) |
+| `npm run db:seed` | Generate seed data |
 
-```bash
-npm run check   # lint + type-check + tests
-```
-
-Never commit real keys. `.env.local` is git-ignored and `.env.example` documents every variable.
-
-## Project layout
-
-```
-src/app/                 routes; globals.css holds every design token
-src/components/ui/       plain UI components, used everywhere
-src/components/game/     game layer (intern screens only)
-src/components/providers GameModeProvider (Full / Light / Plain, reduced motion)
-src/lib/                 pure logic: matching, EXP, streaks
-tests/                   Vitest
-content/tips/            Tips guides as markdown
-supabase/migrations/     numbered SQL migrations
-docs/                    user flows, wireframes, design system, decision log
-```
+Never commit real keys. `.env.local` is git-ignored, and `.env.example` documents every variable.
 
 ## Roadmap
 
 Built one phase at a time. Full details are in [SPEC.md](SPEC.md).
 
 - [x] **Phase 0**: setup, folder structure, env variables, design tokens
-- [x] **Design**: user flows, visual direction, design system, wireframes, screens ([docs/](docs/))
+- [x] **Design**: user flows, visual direction, design system, wireframes, screens
 - [x] **Phase 1**: auth, profile, skills, location, seeded listings, search
 - [x] **Phase 2**: matching engine wired to the database, Match Panel, `/go/:id`, quest log
 - [x] **Phase 3**: EXP, levels, streaks, badges, modes, onboarding, leaderboard
@@ -113,7 +144,7 @@ Built one phase at a time. Full details are in [SPEC.md](SPEC.md).
 
 ## Principles
 
-- **Server is the referee.** EXP, streaks, and the leaderboard are calculated on the server only. The client is never trusted for rewards.
+- **Server is the referee.** Rewards are calculated server-side only.
 - **Accessible by default.** Keyboard support, screen reader labels, never color-only meaning, and `prefers-reduced-motion` respected.
 - **Light on weak phones.** Mobile-first, skeleton loaders, no heavy UI libraries.
 - **Respect the listing sources.** Only a short snippet from outside APIs, always with a link back.
@@ -121,7 +152,7 @@ Built one phase at a time. Full details are in [SPEC.md](SPEC.md).
 
 ## Documentation
 
-| Doc | What's in it |
+| Document | What's in it |
 |---|---|
 | [SPEC.md](SPEC.md) | Product and build spec |
 | [DESIGN_BRIEF.md](DESIGN_BRIEF.md) | Design goals and process |
@@ -134,10 +165,16 @@ Built one phase at a time. Full details are in [SPEC.md](SPEC.md).
 
 ## Contributing
 
-This started as a school project and is heading toward a real launch. Ideas and bug reports are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To report a security problem, see [SECURITY.md](SECURITY.md).
+This started as a school project and is heading toward a real launch. Ideas and bug reports are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 nixxinix
+Released under the [MIT License](LICENSE). © 2026 nixxinix
 
 InternQuest is a working name and may change before launch.
+
+---
+
+<div align="center">
+<sub>Part of the <a href="https://github.com/nixxinix">nixxinix</a> project portfolio</sub>
+</div>
